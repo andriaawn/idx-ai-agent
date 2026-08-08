@@ -1,7 +1,6 @@
 # Data & Math
 pandas>=2.0.0
 numpy>=1.24.0
-pandas-ta
 
 # Data Providers
 yfinance>=0.2.30
