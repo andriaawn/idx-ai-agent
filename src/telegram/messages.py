@@ -1,5 +1,6 @@
 """Safe delivery helpers for Telegram's message size and HTML constraints."""
 
+import html
 import re
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -13,6 +14,78 @@ _HTML_TOKEN = re.compile(
 )
 _HTML_TAG_NAME = re.compile(r"^</?([A-Za-z][A-Za-z0-9-]*)")
 _VOID_TAGS = {"br", "hr", "img"}
+_FENCED_CODE_BLOCK = re.compile(r"```[^\n`]*\n?(.*?)```", re.DOTALL)
+_INLINE_CODE = re.compile(r"`([^`\n]+)`")
+_MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^\s)]+)\)")
+_BOLD_ASTERISK = re.compile(r"\*\*([^*\n]+?)\*\*")
+_BOLD_UNDERSCORE = re.compile(r"__([^_\n]+?)__")
+_ITALIC_ASTERISK = re.compile(r"(?<![\w*])\*([^*\n]+?)\*(?!\*)")
+_ITALIC_UNDERSCORE = re.compile(r"(?<![\w_])_([^_\n]+?)_(?![\w_])")
+_HEADING = re.compile(r"^#{1,6}\s+(.+?)\s*$")
+_BULLET = re.compile(r"^\s*[-*+]\s+(.+)$")
+_NUMBERED_LIST = re.compile(r"^\s*(\d+)[.)]\s+(.+)$")
+
+
+def _format_inline_markdown(text: str) -> str:
+    """Convert the supported inline Markdown constructs after escaping text."""
+    code_segments: List[str] = []
+
+    def protect_code(match: re.Match[str]) -> str:
+        code_segments.append(f"<code>{html.escape(match.group(1))}</code>")
+        return f"\x00CODE{len(code_segments) - 1}\x00"
+
+    escaped = html.escape(_INLINE_CODE.sub(protect_code, text), quote=False)
+
+    def format_link(match: re.Match[str]) -> str:
+        label, url = match.groups()
+        if not re.match(r"(?:https?|tg)://", html.unescape(url), re.IGNORECASE):
+            return label
+        return f'<a href="{url}">{label}</a>'
+
+    escaped = _MARKDOWN_LINK.sub(format_link, escaped)
+    escaped = _BOLD_ASTERISK.sub(r"<b>\1</b>", escaped)
+    escaped = _BOLD_UNDERSCORE.sub(r"<b>\1</b>", escaped)
+    escaped = _ITALIC_ASTERISK.sub(r"<i>\1</i>", escaped)
+    escaped = _ITALIC_UNDERSCORE.sub(r"<i>\1</i>", escaped)
+
+    for index, code_html in enumerate(code_segments):
+        escaped = escaped.replace(f"\x00CODE{index}\x00", code_html)
+    return escaped
+
+
+def _format_markdown_lines(text: str) -> str:
+    formatted_lines: List[str] = []
+    for line in text.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        newline = line[len(content):]
+
+        heading = _HEADING.match(content)
+        bullet = _BULLET.match(content)
+        numbered = _NUMBERED_LIST.match(content)
+        if heading:
+            formatted_lines.append(f"<b>{_format_inline_markdown(heading.group(1))}</b>{newline}")
+        elif bullet:
+            formatted_lines.append(f"• {_format_inline_markdown(bullet.group(1))}{newline}")
+        elif numbered:
+            formatted_lines.append(
+                f"{numbered.group(1)}. {_format_inline_markdown(numbered.group(2))}{newline}"
+            )
+        else:
+            formatted_lines.append(f"{_format_inline_markdown(content)}{newline}")
+    return "".join(formatted_lines)
+
+
+def markdown_to_telegram_html(markdown: str) -> str:
+    """Convert Gemini Markdown into Telegram-compatible, safely escaped HTML."""
+    parts: List[str] = []
+    cursor = 0
+    for match in _FENCED_CODE_BLOCK.finditer(markdown):
+        parts.append(_format_markdown_lines(markdown[cursor:match.start()]))
+        code = match.group(1).rstrip("\n")
+        parts.append(f"<pre><code>{html.escape(code)}</code></pre>")
+        cursor = match.end()
+    parts.append(_format_markdown_lines(markdown[cursor:]))
+    return "".join(parts)
 
 
 def _preferred_cut(text: str, limit: int) -> int:
