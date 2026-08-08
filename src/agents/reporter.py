@@ -1,4 +1,4 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from src.indicators.technical import TechnicalSnapshot
 from src.analysis.setup_detection import DetectedSetup
 from src.risk.engine import RiskPlan
@@ -12,12 +12,25 @@ class ResearchReportGenerator:
         ticker: str,
         score: ScoreBreakdown,
         setup: DetectedSetup,
-        risk: RiskPlan
+        risk: Optional[RiskPlan]
     ) -> str:
         """Generates scannable Telegram signal alert."""
         icon = "🟢" if score.signal_type in ["BUY", "STRONG_BUY"] else ("🟡" if score.signal_type == "WATCHLIST" else "⚪")
         
-        reasons = "\n".join([f"• {e}" for e in setup.evidence])
+        reasons = "\n".join([f"• {e}" for e in setup.evidence]) if (setup and setup.evidence) else "• Tidak ada setup teknikal yang valid."
+
+        if not risk:
+            return f"""━━━━━━━━━━━━━━━━━━
+{icon} {score.signal_type} — {ticker}
+Setup: {setup.setup_type.value if setup else "NO_SETUP"}
+━━━━━━━━━━━━━━━━━━
+
+⚠️ No Valid Risk Plan / Entry Setup
+📊 Setup Score: {score.total_score}/100
+
+💡 Rationale:
+{reasons}
+━━━━━━━━━━━━━━━━━━"""
 
         alert = f"""━━━━━━━━━━━━━━━━━━
 {icon} {score.signal_type} — {ticker}
@@ -48,8 +61,17 @@ Setup: {setup.setup_type.value}
         ticker = analysis_data["ticker"]
         snap: TechnicalSnapshot = analysis_data["snapshot"]
         setup: DetectedSetup = analysis_data["setup"]
-        risk: RiskPlan = analysis_data["risk_plan"]
+        risk: Optional[RiskPlan] = analysis_data.get("risk_plan")
         score: ScoreBreakdown = analysis_data["score_breakdown"]
+
+        risk_section = f"""- **Suggested Entry Zone:** {risk.entry_zone_min:,.2f} – {risk.entry_zone_max:,.2f}
+- **Stop Loss:** {risk.stop_loss:,.2f} IDR
+- **Target 1:** {risk.target_1:,.2f} IDR
+- **Target 2:** {risk.target_2:,.2f} IDR
+- **Risk Per Share:** {risk.risk_per_share:,.2f} IDR
+- **Risk/Reward Ratio:** 1:{risk.risk_reward_ratio}""" if risk else "- **Risk Plan:** N/A (No valid setup/risk parameters detected)"
+
+        invalidation_str = f"Close below {risk.invalidation_level:,.2f} IDR." if risk else "N/A"
 
         report = f"""# 📈 DETAILED EQUITY RESEARCH REPORT: {ticker}
 
@@ -57,7 +79,7 @@ Setup: {setup.setup_type.value}
 - **Ticker:** {ticker}
 - **Verdict:** `{score.signal_type}`
 - **Setup Score:** {score.total_score}/100
-- **Primary Setup:** {setup.setup_type.value}
+- **Primary Setup:** {setup.setup_type.value if setup else "NO_SETUP"}
 - **Data Quality:** {analysis_data.get('data_quality_score', 100)}/100
 
 ## 2. Technical Evidence & Alignment
@@ -73,12 +95,7 @@ Setup: {setup.setup_type.value}
 - **Resistance Levels:** {', '.join([str(r) for r in snap.resistance_levels]) if snap.resistance_levels else 'None'}
 
 ## 4. Risk & Capital Management
-- **Suggested Entry Zone:** {risk.entry_zone_min:,.2f} – {risk.entry_zone_max:,.2f}
-- **Stop Loss:** {risk.stop_loss:,.2f} IDR
-- **Target 1:** {risk.target_1:,.2f} IDR
-- **Target 2:** {risk.target_2:,.2f} IDR
-- **Risk Per Share:** {risk.risk_per_share:,.2f} IDR
-- **Risk/Reward Ratio:** 1:{risk.risk_reward_ratio}
+{risk_section}
 
 ## 5. Scoring Breakdown
 - **Trend Alignment:** {score.trend_score}/20
@@ -89,8 +106,8 @@ Setup: {setup.setup_type.value}
 - **Market Regime:** {score.regime_score}/10
 
 ## 6. Case & Invalidation
-- **Bull Case:** {setup.evidence[0] if setup.evidence else 'Aligned momentum and volume.'}
+- **Bull Case:** {setup.evidence[0] if (setup and setup.evidence) else 'Aligned momentum and volume.'}
 - **Bear Case / Failure Scenario:** Breakdown below key EMA support or market regime deterioration.
-- **Invalidation Level:** Close below {risk.invalidation_level:,.2f} IDR.
+- **Invalidation Level:** {invalidation_str}
 """
         return report
