@@ -77,9 +77,10 @@ class QuantAgentTools:
         self, 
         tickers: Optional[List[str]] = None, 
         max_concurrent: int = 15,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        save_to_db: bool = True
     ) -> List[Dict[str, Any]]:
-        """Scans stock universe concurrently for valid setup candidates."""
+        """Scans stock universe concurrently for valid setup candidates and persists signals to DB."""
         if not tickers:
             fetched = await IDXUniverseRefresher.fetch_idx_stocks()
             tickers = [s["ticker"] for s in fetched] if fetched else [s["ticker"] for s in POPULAR_IDX_STOCKS]
@@ -107,4 +108,42 @@ class QuantAgentTools:
                     valid_results.append(res)
 
         valid_results.sort(key=lambda x: x["score_breakdown"].total_score, reverse=True)
+
+        if save_to_db and valid_results:
+            try:
+                await self.save_scan_results_to_db(valid_results)
+            except Exception:
+                pass
+
         return valid_results
+
+    async def save_scan_results_to_db(self, scan_results: List[Dict[str, Any]]) -> int:
+        """Persists valid scan signal results into the database."""
+        from src.storage.database import AsyncSessionLocal
+        from src.storage.models import Signal
+        from datetime import datetime
+
+        saved_count = 0
+        async with AsyncSessionLocal() as session:
+            for res in scan_results:
+                ticker = res["ticker"]
+                score = res["score_breakdown"]
+                setup = res["setup"]
+                risk = res.get("risk_plan")
+
+                sig = Signal(
+                    ticker=ticker,
+                    timestamp=datetime.utcnow(),
+                    signal_type=score.signal_type,
+                    setup_name=setup.setup_type.value if setup else "NO_SETUP",
+                    score=score.total_score,
+                    entry_price=risk.entry_price if risk else 0.0,
+                    stop_loss=risk.stop_loss if risk else 0.0,
+                    target_1=risk.target_1 if risk else 0.0,
+                    risk_reward=risk.risk_reward_ratio if risk else 0.0,
+                    status="ACTIVE"
+                )
+                session.add(sig)
+                saved_count += 1
+            await session.commit()
+        return saved_count
