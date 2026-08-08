@@ -1,6 +1,8 @@
+import os
 import asyncio
 import urllib.request
 import json
+import pandas as pd
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -52,8 +54,41 @@ class IDXUniverseRefresher:
     """Manages the IDX stock universe list."""
 
     @staticmethod
+    def load_excel_stocks() -> List[Dict[str, Any]]:
+        """Load stock universe from local Daftar_Saham.xlsx file if available."""
+        file_candidates = [
+            "Daftar_Saham.xlsx",
+            os.path.join(os.getcwd(), "Daftar_Saham.xlsx"),
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "Daftar_Saham.xlsx")
+        ]
+        for path in file_candidates:
+            if os.path.exists(path):
+                try:
+                    df = pd.read_excel(path)
+                    stocks = []
+                    for _, row in df.iterrows():
+                        ticker = str(row.get("Kode", "")).strip().upper()
+                        name = str(row.get("Nama Perusahaan", "")).strip()
+                        board = str(row.get("Papan Pencatatan", "Unknown")).strip()
+                        if ticker and len(ticker) == 4:
+                            stocks.append({
+                                "ticker": ticker,
+                                "name": name,
+                                "sector": board
+                            })
+                    if stocks:
+                        return stocks
+                except Exception:
+                    pass
+        return []
+
+    @staticmethod
     async def fetch_idx_stocks() -> List[Dict[str, Any]]:
-        """Fetch stock universe from official IDX endpoint or fallback to curated liquid list."""
+        """Fetch stock universe from local Excel, official IDX endpoint, or fallback."""
+        excel_stocks = IDXUniverseRefresher.load_excel_stocks()
+        if excel_stocks:
+            return excel_stocks
+
         loop = asyncio.get_event_loop()
 
         def fetch():

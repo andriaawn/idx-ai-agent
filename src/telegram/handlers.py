@@ -103,14 +103,16 @@ async def handle_backtest(message: types.Message):
 
 @router.message(Command("scan"))
 async def handle_scan(message: types.Message):
-    await message.answer("🔎 Memindai universe pasar IDX untuk saham momentum & setup terbaik...", parse_mode="HTML")
+    stocks = await IDXUniverseRefresher.fetch_idx_stocks()
+    total_universe = len(stocks)
+    await message.answer(f"🔎 Memindai universe pasar IDX (<b>{total_universe} Saham</b>)...", parse_mode="HTML")
     results = await tools.scan_universe()
 
     if not results:
         await message.answer("ℹ️ <b>NO TRADE</b> — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="HTML")
         return
 
-    summary = f"🔥 <b>HASIL SCANNING PASAR IDX TERATAS ({len(results)} Ditemukan):</b>\n\n"
+    summary = f"🔥 <b>HASIL SCANNING PASAR IDX TERATAS ({len(results)} Ditemukan dari {total_universe} Saham):</b>\n\n"
     for res in results[:10]:
         t = res["ticker"]
         score = res["score_breakdown"]

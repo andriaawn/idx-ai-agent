@@ -9,7 +9,7 @@ from src.analysis.setup_detection import SetupDetector
 from src.risk.engine import RiskEngine
 from src.signals.scoring import SignalScorer
 from src.backtesting.engine import BacktestEngine
-from src.data.universe import POPULAR_IDX_STOCKS
+from src.data.universe import POPULAR_IDX_STOCKS, IDXUniverseRefresher
 
 class QuantAgentTools:
     """Quantitative analysis tools callable by the AI Agent."""
@@ -73,10 +73,19 @@ class QuantAgentTools:
             "max_drawdown_pct": perf.max_drawdown_pct
         }
 
-    async def scan_universe(self, tickers: Optional[List[str]] = None, max_concurrent: int = 10) -> List[Dict[str, Any]]:
+    async def scan_universe(
+        self, 
+        tickers: Optional[List[str]] = None, 
+        max_concurrent: int = 15,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
         """Scans stock universe concurrently for valid setup candidates."""
         if not tickers:
-            tickers = [s["ticker"] for s in POPULAR_IDX_STOCKS]
+            fetched = await IDXUniverseRefresher.fetch_idx_stocks()
+            tickers = [s["ticker"] for s in fetched] if fetched else [s["ticker"] for s in POPULAR_IDX_STOCKS]
+
+        if limit and limit > 0:
+            tickers = tickers[:limit]
 
         semaphore = asyncio.Semaphore(max_concurrent)
 
