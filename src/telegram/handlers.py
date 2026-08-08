@@ -3,11 +3,13 @@ from aiogram import Router, types
 from aiogram.filters import CommandStart, Command
 from src.agents.orchestrator import AgentOrchestrator
 from src.agents.tools import QuantAgentTools
+from src.agents.llm_agent import LLMAgentService
 from src.data.universe import IDXUniverseRefresher
 
 router = Router()
 orchestrator = AgentOrchestrator()
 tools = QuantAgentTools()
+llm_agent = LLMAgentService(tools=tools)
 
 @router.message(CommandStart())
 async def handle_start(message: types.Message):
@@ -128,24 +130,71 @@ async def handle_scan(message: types.Message):
 @router.message()
 async def handle_natural_language(message: types.Message):
     text = message.text.upper()
+    original_text = message.text  # preserve original casing for LLM
     match = re.search(r'\b[A-Z]{4}\b', text)
 
+    # --- Fast deterministic path: ticker + command keyword ---
     if "MARKET" in text or "IHSG" in text or "PASAR" in text:
         await handle_market(message)
-    elif ("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text) and match:
+
+    elif (("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text or "DETAIL" in text) and match):
         ticker = match.group(0)
         await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
         await message.answer(response)
-    elif ("SINYAL" in text or "SIGNAL" in text or "ANALISA" in text) and match:
+
+    elif (("SINYAL" in text or "SIGNAL" in text or "BELI" in text or "ENTRY" in text) and match):
         ticker = match.group(0)
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
         await message.answer(response)
-    elif match:
+
+    elif match and len(text.split()) <= 2:
+        # Short query with just a ticker — default to signal
         ticker = match.group(0)
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
         await message.answer(response)
+
     else:
-        await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
+        # --- Interactive AI path: open-ended, comparative, educational ---
+        if llm_agent.is_enabled():
+            await message.answer("🧠 <i>Menghubungi AI Research Analyst...</i>", parse_mode="HTML")
+
+            # Enrich with quant context if ticker mentioned
+            quant_context = None
+            if match:
+                ticker = match.group(0)
+                try:
+                    res = await tools.analyze_stock(ticker)
+                    if res.get("status") == "SUCCESS":
+                        snap = res["snapshot"]
+                        score = res["score_breakdown"]
+                        setup = res["setup"]
+                        quant_context = (
+                            f"Ticker: {ticker}\n"
+                            f"Harga Terakhir: {snap.close:,.0f} IDR\n"
+                            f"Tren: {snap.trend_alignment}, RSI-14: {snap.rsi_14:.1f}, ROC-10: {snap.roc_10:.2f}%\n"
+                            f"RVOL: {snap.rvol:.2f}x, EMA20: {snap.ema_20:,.0f}, EMA50: {snap.ema_50:,.0f}\n"
+                            f"Setup Terdeteksi: {setup.setup_type.value}, Skor: {score.total_score}/100, Sinyal: {score.signal_type}\n"
+                            f"Support: {snap.support_levels}, Resistance: {snap.resistance_levels}"
+                        )
+                except Exception:
+                    pass
+
+            ai_response = await llm_agent.generate_response(original_text, quant_context)
+            if ai_response:
+                await message.answer(ai_response)
+            else:
+                await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
+        else:
+            await message.answer(
+                "🤖 Perintah tidak dikenali.\n\n"
+                "Coba gunakan salah satu perintah berikut:\n"
+                "• <code>/signal BBCA</code> — Sinyal trading\n"
+                "• <code>/analyze BBCA</code> — Laporan lengkap\n"
+                "• <code>/scan</code> — Scan pasar IDX\n"
+                "• <code>/market</code> — Status IHSG\n"
+                "• <code>/help</code> — Panduan lengkap",
+                parse_mode="HTML"
+            )
