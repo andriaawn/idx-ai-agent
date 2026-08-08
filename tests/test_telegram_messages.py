@@ -1,7 +1,19 @@
 import re
 import unittest
 
-from src.telegram.messages import markdown_to_telegram_html, split_telegram_message
+from src.telegram.messages import (
+    markdown_to_telegram_html,
+    send_markdown_message,
+    split_telegram_message,
+)
+
+
+class FakeMessage:
+    def __init__(self):
+        self.sent = []
+
+    async def answer(self, text, parse_mode=None):
+        self.sent.append((text, parse_mode))
 
 
 class TestTelegramMessageSplitting(unittest.TestCase):
@@ -65,6 +77,21 @@ class TestTelegramMessageSplitting(unittest.TestCase):
             re.sub(r"</?b>", "", "".join(chunks)),
             re.sub(r"</?b>", "", html),
         )
+
+
+class TestMarkdownDelivery(unittest.IsolatedAsyncioTestCase):
+    async def test_research_report_delivery_formats_and_chunks_markdown(self):
+        message = FakeMessage()
+        report = "# Laporan BBCA\n\n- **Ticker:** `BBCA`\n" + ("*Catatan penting.*\n" * 500)
+
+        await send_markdown_message(message, report)
+
+        self.assertGreater(len(message.sent), 1)
+        self.assertTrue(all(parse_mode == "HTML" for _, parse_mode in message.sent))
+        self.assertTrue(all(len(text) <= 4000 for text, _ in message.sent))
+        self.assertTrue(any("<b>Laporan BBCA</b>" in text for text, _ in message.sent))
+        self.assertTrue(any("<code>BBCA</code>" in text for text, _ in message.sent))
+        self.assertTrue(all(text.count("<i>") == text.count("</i>") for text, _ in message.sent))
 
 
 if __name__ == "__main__":

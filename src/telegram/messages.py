@@ -219,3 +219,12 @@ async def send_message_chunks(
     """Send a complete response as one or more Telegram-safe messages."""
     for chunk in split_telegram_message(text, parse_mode=parse_mode):
         await message.answer(chunk, parse_mode=parse_mode)
+
+
+async def send_markdown_message(message: Any, markdown: str) -> None:
+    """Format Markdown once, then deliver it as Telegram-safe HTML chunks."""
+    await send_message_chunks(
+        message,
+        markdown_to_telegram_html(markdown),
+        parse_mode="HTML",
+    )

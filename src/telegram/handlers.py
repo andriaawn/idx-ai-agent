@@ -5,7 +5,7 @@ from src.agents.tools import QuantAgentTools
 from src.agents.llm_agent import LLMAgentService
 from src.data.universe import IDXUniverseRefresher
 from src.data.ticker_resolver import TickerResolver
-from src.telegram.messages import markdown_to_telegram_html, send_message_chunks
+from src.telegram.messages import send_markdown_message, send_message_chunks
 
 router = Router()
 orchestrator = AgentOrchestrator()
@@ -53,7 +53,7 @@ async def handle_market(message: types.Message):
         f"• <b>RSI (14):</b> {res.get('rsi', 0):.2f}\n"
         f"• <b>ATR Volatility:</b> {res.get('atr_pct', 0):.2f}%\n"
     )
-    await message.answer(text, parse_mode="HTML")
+    await send_message_chunks(message, text, parse_mode="HTML")
 
 @router.message(Command("signal"))
 async def handle_signal(message: types.Message):
@@ -65,7 +65,7 @@ async def handle_signal(message: types.Message):
     ticker = args[1].upper()
     await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
     response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-    await message.answer(response)
+    await send_message_chunks(message, response)
 
 @router.message(Command("analyze"))
 async def handle_analyze(message: types.Message):
@@ -77,7 +77,7 @@ async def handle_analyze(message: types.Message):
     ticker = args[1].upper()
     await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
     response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
-    await message.answer(response)
+    await send_markdown_message(message, response)
 
 @router.message(Command("backtest"))
 async def handle_backtest(message: types.Message):
@@ -103,7 +103,7 @@ async def handle_backtest(message: types.Message):
         f"• <b>Total Return:</b> {res['total_return_pct']}%\n"
         f"• <b>Max Drawdown:</b> {res['max_drawdown_pct']}%\n"
     )
-    await message.answer(text, parse_mode="HTML")
+    await send_message_chunks(message, text, parse_mode="HTML")
 
 @router.message(Command("scan"))
 async def handle_scan(message: types.Message):
@@ -126,7 +126,7 @@ async def handle_scan(message: types.Message):
         summary += f"{icon} <b>{t}</b> — <code>{score.signal_type}</code> (Skor: {score.total_score}/100)\n   Setup: {setup_display}\n\n"
 
     summary += "Ketik <code>/signal [TICKER]</code> untuk detail sinyal."
-    await message.answer(summary, parse_mode="HTML")
+    await send_message_chunks(message, summary, parse_mode="HTML")
 
 @router.message()
 async def handle_natural_language(message: types.Message):
@@ -142,20 +142,20 @@ async def handle_natural_language(message: types.Message):
         ticker = tickers[0]
         await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
-        await message.answer(response)
+        await send_markdown_message(message, response)
 
     elif (("SINYAL" in text or "SIGNAL" in text or "BELI" in text or "ENTRY" in text) and tickers):
         ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-        await message.answer(response)
+        await send_message_chunks(message, response)
 
     elif tickers and len(text.split()) <= 2:
         # Short query with just a ticker — default to signal
         ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-        await message.answer(response)
+        await send_message_chunks(message, response)
 
     else:
         # --- Interactive AI path: open-ended, comparative, educational ---
@@ -187,11 +187,7 @@ async def handle_natural_language(message: types.Message):
                 "\n\n".join(quant_contexts) if quant_contexts else None,
             )
             if ai_response:
-                await send_message_chunks(
-                    message,
-                    markdown_to_telegram_html(ai_response),
-                    parse_mode="HTML",
-                )
+                await send_markdown_message(message, ai_response)
             else:
                 await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
         else:
