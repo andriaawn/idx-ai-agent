@@ -3,6 +3,7 @@ from aiogram import Router, types
 from aiogram.filters import CommandStart, Command
 from src.agents.orchestrator import AgentOrchestrator
 from src.agents.tools import QuantAgentTools
+from src.data.universe import IDXUniverseRefresher
 
 router = Router()
 orchestrator = AgentOrchestrator()
