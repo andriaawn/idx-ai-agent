@@ -1,4 +1,5 @@
-from typing import Dict, Any
+import asyncio
+from typing import Dict, Any, List, Optional
 from src.data.providers.yfinance_provider import YFinanceProvider
 from src.data.normalizers import MarketDataNormalizer
 from src.data.validators import MarketDataValidator
@@ -8,6 +9,7 @@ from src.analysis.setup_detection import SetupDetector
 from src.risk.engine import RiskEngine
 from src.signals.scoring import SignalScorer
 from src.backtesting.engine import BacktestEngine
+from src.data.universe import POPULAR_IDX_STOCKS
 
 class QuantAgentTools:
     """Quantitative analysis tools callable by the AI Agent."""
@@ -70,3 +72,30 @@ class QuantAgentTools:
             "total_return_pct": perf.total_return_pct,
             "max_drawdown_pct": perf.max_drawdown_pct
         }
+
+    async def scan_universe(self, tickers: Optional[List[str]] = None, max_concurrent: int = 10) -> List[Dict[str, Any]]:
+        """Scans stock universe concurrently for valid setup candidates."""
+        if not tickers:
+            tickers = [s["ticker"] for s in POPULAR_IDX_STOCKS]
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def analyze_with_sem(t: str):
+            async with semaphore:
+                try:
+                    return await self.analyze_stock(t)
+                except Exception:
+                    return {"status": "ERROR", "ticker": t}
+
+        tasks = [analyze_with_sem(t) for t in tickers]
+        results = await asyncio.gather(*tasks)
+
+        valid_results = []
+        for res in results:
+            if res.get("status") == "SUCCESS":
+                score = res["score_breakdown"]
+                if score.signal_type in ["BUY", "STRONG_BUY", "WATCHLIST"]:
+                    valid_results.append(res)
+
+        valid_results.sort(key=lambda x: x["score_breakdown"].total_score, reverse=True)
+        return valid_results

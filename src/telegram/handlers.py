@@ -103,26 +103,21 @@ async def handle_backtest(message: types.Message):
 
 @router.message(Command("scan"))
 async def handle_scan(message: types.Message):
-    await message.answer("🔎 Memindai universe IDX untuk saham momentum terbaik...")
-    top_tickers = ["BBCA", "BBRI", "BMRI", "TLKM", "ASII"]
-    results = []
-
-    for t in top_tickers:
-        res = await tools.analyze_stock(t)
-        if res.get("status") == "SUCCESS":
-            score = res["score_breakdown"]
-            if score.signal_type in ["BUY", "STRONG_BUY", "WATCHLIST"]:
-                results.append((t, score.signal_type, score.total_score, res["setup"].setup_type.value))
+    await message.answer("🔎 Memindai universe pasar IDX untuk saham momentum & setup terbaik...", parse_mode="HTML")
+    results = await tools.scan_universe()
 
     if not results:
         await message.answer("ℹ️ <b>NO TRADE</b> — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="HTML")
         return
 
-    summary = "🔥 <b>HASIL SCANNING PASAR IDX TERATAS:</b>\n\n"
-    for r in results:
-        icon = "🟢" if "BUY" in r[1] else "🟡"
-        setup_display = r[3].replace("_", " ")
-        summary += f"{icon} <b>{r[0]}</b> — <code>{r[1]}</code> (Skor: {r[2]}/100)\n   Setup: {setup_display}\n\n"
+    summary = f"🔥 <b>HASIL SCANNING PASAR IDX TERATAS ({len(results)} Ditemukan):</b>\n\n"
+    for res in results[:10]:
+        t = res["ticker"]
+        score = res["score_breakdown"]
+        setup = res["setup"]
+        icon = "🟢" if "BUY" in score.signal_type else "🟡"
+        setup_display = setup.setup_type.value.replace("_", " ")
+        summary += f"{icon} <b>{t}</b> — <code>{score.signal_type}</code> (Skor: {score.total_score}/100)\n   Setup: {setup_display}\n\n"
 
     summary += "Ketik <code>/signal [TICKER]</code> untuk detail sinyal."
     await message.answer(summary, parse_mode="HTML")
