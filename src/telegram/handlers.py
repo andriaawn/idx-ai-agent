@@ -5,6 +5,7 @@ from src.agents.tools import QuantAgentTools
 from src.agents.llm_agent import LLMAgentService
 from src.data.universe import IDXUniverseRefresher
 from src.data.ticker_resolver import TickerResolver
+from src.telegram.messages import send_message_chunks
 
 router = Router()
 orchestrator = AgentOrchestrator()
@@ -186,7 +187,7 @@ async def handle_natural_language(message: types.Message):
                 "\n\n".join(quant_contexts) if quant_contexts else None,
             )
             if ai_response:
-                await message.answer(ai_response)
+                await send_message_chunks(message, ai_response)
             else:
                 await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
         else:
