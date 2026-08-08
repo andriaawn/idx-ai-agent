@@ -134,11 +134,20 @@ async def handle_natural_language(message: types.Message):
 
     if "MARKET" in text or "IHSG" in text or "PASAR" in text:
         await handle_market(message)
-    elif "ANALISA" in text and match:
-        message.text = f"/analyze {match.group(0)}"
-        await handle_analyze(message)
+    elif ("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text) and match:
+        ticker = match.group(0)
+        await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
+        response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
+        await message.answer(response)
+    elif ("SINYAL" in text or "SIGNAL" in text or "ANALISA" in text) and match:
+        ticker = match.group(0)
+        await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
+        response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
+        await message.answer(response)
     elif match:
-        message.text = f"/signal {match.group(0)}"
-        await handle_signal(message)
+        ticker = match.group(0)
+        await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
+        response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
+        await message.answer(response)
     else:
         await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
