@@ -10,6 +10,7 @@ from src.risk.engine import RiskEngine
 from src.signals.scoring import SignalScorer
 from src.backtesting.engine import BacktestEngine
 from src.data.universe import POPULAR_IDX_STOCKS, IDXUniverseRefresher
+from src.data.ticker_resolver import TickerResolver
 
 class QuantAgentTools:
     """Quantitative analysis tools callable by the AI Agent."""
@@ -27,7 +28,11 @@ class QuantAgentTools:
 
     async def analyze_stock(self, ticker: str) -> Dict[str, Any]:
         """Runs complete deterministic quant analysis pipeline for a ticker."""
-        df = await self.provider.get_historical_ohlcv(ticker, timeframe="1d")
+        canonical_ticker = await TickerResolver.resolve_ticker(ticker)
+        if not canonical_ticker:
+            return {"status": "ERROR", "reason": "Ticker is not a valid IDX listing"}
+
+        df = await self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d")
         if df.empty:
             return {"status": "ERROR", "reason": "No price data found for ticker"}
 
@@ -38,13 +43,13 @@ class QuantAgentTools:
             return {"status": "DATA_UNRELIABLE", "issues": val.issues, "score": val.score}
 
         snapshot = TechnicalIndicators.get_snapshot(clean_df)
-        setup = SetupDetector.detect_setups(ticker, snapshot)
+        setup = SetupDetector.detect_setups(canonical_ticker, snapshot)
         risk_plan = RiskEngine.calculate_risk_plan(snapshot, setup)
         score_breakdown = SignalScorer.score_signal(snapshot, setup, risk_plan)
 
         return {
             "status": "SUCCESS",
-            "ticker": ticker,
+            "ticker": canonical_ticker,
             "data_quality_score": val.score,
             "snapshot": snapshot,
             "setup": setup,
@@ -54,17 +59,21 @@ class QuantAgentTools:
 
     async def run_stock_backtest(self, ticker: str) -> Dict[str, Any]:
         """Runs backtest for a ticker over historical data."""
-        df = await self.provider.get_historical_ohlcv(ticker, timeframe="1d")
+        canonical_ticker = await TickerResolver.resolve_ticker(ticker)
+        if not canonical_ticker:
+            return {"status": "ERROR", "reason": "Ticker is not a valid IDX listing"}
+
+        df = await self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d")
         if df.empty or len(df) < 50:
             return {"status": "ERROR", "reason": "Insufficient historical data"}
 
         clean_df = MarketDataNormalizer.normalize(df)
         engine = BacktestEngine()
-        perf = engine.run_backtest(ticker, clean_df)
+        perf = engine.run_backtest(canonical_ticker, clean_df)
 
         return {
             "status": "SUCCESS",
-            "ticker": ticker,
+            "ticker": canonical_ticker,
             "total_trades": perf.total_trades,
             "win_rate": perf.win_rate,
             "profit_factor": perf.profit_factor,
@@ -127,12 +136,13 @@ class QuantAgentTools:
         async with AsyncSessionLocal() as session:
             for res in scan_results:
                 ticker = res["ticker"]
+                db_ticker = ticker[:-3] if ticker.endswith(".JK") else ticker
                 score = res["score_breakdown"]
                 setup = res["setup"]
                 risk = res.get("risk_plan")
 
                 sig = Signal(
-                    ticker=ticker,
+                    ticker=db_ticker,
                     timestamp=datetime.utcnow(),
                     signal_type=score.signal_type,
                     setup_name=setup.setup_type.value if setup else "NO_SETUP",

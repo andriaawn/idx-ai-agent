@@ -1,10 +1,10 @@
-import re
 from aiogram import Router, types
 from aiogram.filters import CommandStart, Command
 from src.agents.orchestrator import AgentOrchestrator
 from src.agents.tools import QuantAgentTools
 from src.agents.llm_agent import LLMAgentService
 from src.data.universe import IDXUniverseRefresher
+from src.data.ticker_resolver import TickerResolver
 
 router = Router()
 orchestrator = AgentOrchestrator()
@@ -131,27 +131,27 @@ async def handle_scan(message: types.Message):
 async def handle_natural_language(message: types.Message):
     text = message.text.upper()
     original_text = message.text  # preserve original casing for LLM
-    match = re.search(r'\b[A-Z]{4}\b', text)
+    tickers = await TickerResolver.resolve_text(original_text)
 
     # --- Fast deterministic path: ticker + command keyword ---
     if "MARKET" in text or "IHSG" in text or "PASAR" in text:
         await handle_market(message)
 
-    elif (("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text or "DETAIL" in text) and match):
-        ticker = match.group(0)
+    elif (("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text or "DETAIL" in text) and tickers):
+        ticker = tickers[0]
         await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
         await message.answer(response)
 
-    elif (("SINYAL" in text or "SIGNAL" in text or "BELI" in text or "ENTRY" in text) and match):
-        ticker = match.group(0)
+    elif (("SINYAL" in text or "SIGNAL" in text or "BELI" in text or "ENTRY" in text) and tickers):
+        ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
         await message.answer(response)
 
-    elif match and len(text.split()) <= 2:
+    elif tickers and len(text.split()) <= 2:
         # Short query with just a ticker — default to signal
-        ticker = match.group(0)
+        ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
         response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
         await message.answer(response)
@@ -161,17 +161,16 @@ async def handle_natural_language(message: types.Message):
         if llm_agent.is_enabled():
             await message.answer("🧠 <i>Menghubungi AI Research Analyst...</i>", parse_mode="HTML")
 
-            # Enrich with quant context if ticker mentioned
-            quant_context = None
-            if match:
-                ticker = match.group(0)
+            # Enrich the AI request with every valid IDX ticker mentioned.
+            quant_contexts = []
+            for ticker in tickers:
                 try:
                     res = await tools.analyze_stock(ticker)
                     if res.get("status") == "SUCCESS":
                         snap = res["snapshot"]
                         score = res["score_breakdown"]
                         setup = res["setup"]
-                        quant_context = (
+                        quant_contexts.append(
                             f"Ticker: {ticker}\n"
                             f"Harga Terakhir: {snap.close:,.0f} IDR\n"
                             f"Tren: {snap.trend_alignment}, RSI-14: {snap.rsi_14:.1f}, ROC-10: {snap.roc_10:.2f}%\n"
@@ -182,7 +181,10 @@ async def handle_natural_language(message: types.Message):
                 except Exception:
                     pass
 
-            ai_response = await llm_agent.generate_response(original_text, quant_context)
+            ai_response = await llm_agent.generate_response(
+                original_text,
+                "\n\n".join(quant_contexts) if quant_contexts else None,
+            )
             if ai_response:
                 await message.answer(ai_response)
             else:
