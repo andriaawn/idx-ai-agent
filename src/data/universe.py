@@ -2,6 +2,7 @@ import os
 import asyncio
 import urllib.request
 import json
+import logging
 import pandas as pd
 from typing import List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,8 +79,8 @@ class IDXUniverseRefresher:
                             })
                     if stocks:
                         return stocks
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.warning(f"Could not load Excel universe file at {path}: {e}")
         return []
 
     @staticmethod
