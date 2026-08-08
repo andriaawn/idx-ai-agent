@@ -26,34 +26,43 @@ class LLMAgentService:
     def is_enabled(self) -> bool:
         return bool(self.api_key and self.api_key.strip())
 
-    async def generate_response(self, user_prompt: str, context_data: Optional[Dict[str, Any]] = None) -> str:
+    async def generate_response(self, user_prompt: str, context_data: Optional[str] = None) -> str:
         """Generates interactive response using Gemini LLM API with optional quant context."""
         if not self.is_enabled():
             return ""
 
-        try:
-            from google import genai
-            client = genai.Client(api_key=self.api_key)
+        prompt = f"{SYSTEM_PROMPT}\n\nPertanyaan Pengguna: {user_prompt}\n"
+        if context_data:
+            prompt += f"\nData Teknikal & Kuantitatif Terkait:\n{context_data}\n"
 
-            prompt = f"{SYSTEM_PROMPT}\n\nPertanyaan Pengguna: {user_prompt}\n"
-            if context_data:
-                prompt += f"\nData Teknikal & Kuantitatif Terkait:\n{context_data}\n"
-
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
-            )
-            return response.text if response and response.text else "Maaf, AI tidak mengembalikan respon."
-        except Exception as e:
-            logging.error(f"Error calling Gemini LLM API: {e}")
+        for model in ["gemini-2.0-flash", "gemini-2.0-flash-lite"]:
             try:
                 from google import genai
                 client = genai.Client(api_key=self.api_key)
-                response = client.models.generate_content(
-                    model="gemini-2.0-flash-lite",
-                    contents=prompt
-                )
-                return response.text if response and response.text else "Maaf, AI tidak mengembalikan respon."
-            except Exception as ex:
-                logging.error(f"Fallback Gemini LLM API call also failed: {ex}")
-                return f"⚠️ Terjadi kendala saat menghubungi AI Agent API: {ex}"
+                response = client.models.generate_content(model=model, contents=prompt)
+                if response and response.text:
+                    return response.text
+            except Exception as e:
+                err_str = str(e)
+                if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    logging.warning(f"Gemini model {model} quota exhausted: {e}")
+                    # Try next model in loop
+                    continue
+                elif "404" in err_str or "NOT_FOUND" in err_str:
+                    logging.warning(f"Gemini model {model} not available: {e}")
+                    continue
+                else:
+                    logging.error(f"Gemini model {model} unexpected error: {e}")
+                    continue
+
+        # All models failed
+        return (
+            "⚠️ <b>AI Research Analyst tidak tersedia saat ini.</b>\n\n"
+            "Kemungkinan penyebab:\n"
+            "• Kuota API Gemini harian telah habis\n"
+            "• API key belum dikonfigurasi dengan benar\n\n"
+            "💡 <b>Gunakan command langsung:</b>\n"
+            "• <code>/signal [TICKER]</code> — Sinyal trading instan\n"
+            "• <code>/analyze [TICKER]</code> — Laporan teknikal lengkap\n"
+            "• <code>/scan</code> — Scan seluruh pasar IDX"
+        )
