@@ -11,55 +11,55 @@ tools = QuantAgentTools()
 @router.message(CommandStart())
 async def handle_start(message: types.Message):
     welcome_text = (
-        "🤖 *IDX AI Agent — Quantitative Equity Research Assistant*\n\n"
+        "🤖 <b>IDX AI Agent — Quantitative Equity Research Assistant</b>\n\n"
         "Selamat datang! Saya adalah asisten riset kuantitatif independen untuk Bursa Efek Indonesia (IDX).\n\n"
-        "📌 *Perintah Utama:*\n"
-        "• `/signal BBCA` - Sinyal trading cepat (Entry, Stop Loss, Target, R:R)\n"
-        "• `/analyze BBCA` - Laporan riset ekuitas lengkap 22 poin\n"
-        "• `/scan` - Pemindaian pasar mencari saham momentum & breakout terbaik\n"
-        "• `/market` - Status pasar IHSG (Regime & Volatilitas)\n"
-        "• `/backtest BBCA` - Simulasi performa sinyal historis\n"
-        "• `/help` - Panduan penggunaan\n\n"
-        "💡 *Pertanyaan Natural:* Anda juga bisa langsung mengetik pesan seperti:\n"
-        "_'analisa BBCA'_, _'bagaimana kondisi pasar?'_, _'sinyal TLKM'_\n"
+        "📌 <b>Perintah Utama:</b>\n"
+        "• <code>/signal BBCA</code> - Sinyal trading cepat (Entry, Stop Loss, Target, R:R)\n"
+        "• <code>/analyze BBCA</code> - Laporan riset ekuitas lengkap 22 poin\n"
+        "• <code>/scan</code> - Pemindaian pasar mencari saham momentum &amp; breakout terbaik\n"
+        "• <code>/market</code> - Status pasar IHSG (Regime &amp; Volatilitas)\n"
+        "• <code>/backtest BBCA</code> - Simulasi performa sinyal historis\n"
+        "• <code>/help</code> - Panduan penggunaan\n\n"
+        "💡 <b>Pertanyaan Natural:</b> Anda juga bisa langsung mengetik pesan seperti:\n"
+        "<i>'analisa BBCA'</i>, <i>'bagaimana kondisi pasar?'</i>, <i>'sinyal TLKM'</i>\n"
     )
-    await message.answer(welcome_text, parse_mode="Markdown")
+    await message.answer(welcome_text, parse_mode="HTML")
 
 @router.message(Command("help"))
 async def handle_help(message: types.Message):
     help_text = (
-        "📖 *Panduan Penggunaan Bot:*\n\n"
-        "1. `/signal [TICKER]` : Mendapatkan rekomendasi BUY/WATCHLIST/NO TRADE beserta kalkulasi risk management.\n"
-        "2. `/analyze [TICKER]` : Membuat laporan analisis teknikal komprehensif.\n"
-        "3. `/scan` : Pemindaian otomatis seluruh universe IDX untuk rekomendasi teratas.\n"
-        "4. `/backtest [TICKER]` : Melakukan uji historis strategi pada saham tertentu.\n"
-        "5. `/market` : Cek kondisi rezim IHSG terkini.\n"
+        "📖 <b>Panduan Penggunaan Bot:</b>\n\n"
+        "1. <code>/signal [TICKER]</code> : Mendapatkan rekomendasi BUY/WATCHLIST/NO TRADE beserta kalkulasi risk management.\n"
+        "2. <code>/analyze [TICKER]</code> : Membuat laporan analisis teknikal komprehensif.\n"
+        "3. <code>/scan</code> : Pemindaian otomatis seluruh universe IDX untuk rekomendasi teratas.\n"
+        "4. <code>/backtest [TICKER]</code> : Melakukan uji historis strategi pada saham tertentu.\n"
+        "5. <code>/market</code> : Cek kondisi rezim IHSG terkini.\n"
     )
-    await message.answer(help_text, parse_mode="Markdown")
+    await message.answer(help_text, parse_mode="HTML")
 
 @router.message(Command("market"))
 async def handle_market(message: types.Message):
     await message.answer("🔄 Menganalisis kondisi pasar IHSG...")
     res = await tools.get_market_status()
     text = (
-        f"📊 *STATUS REZIM PASAR IHSG*\n\n"
-        f"• *Regime:* `{res.get('regime', 'UNKNOWN')}`\n"
-        f"• *Confidence:* {res.get('confidence', 0)*100:.0f}%\n"
-        f"• *IHSG Close:* {res.get('ihsg_close', 0):,.2f}\n"
-        f"• *RSI (14):* {res.get('rsi', 0):.2f}\n"
-        f"• *ATR Volatility:* {res.get('atr_pct', 0):.2f}%\n"
+        f"📊 <b>STATUS REZIM PASAR IHSG</b>\n\n"
+        f"• <b>Regime:</b> <code>{res.get('regime', 'UNKNOWN')}</code>\n"
+        f"• <b>Confidence:</b> {res.get('confidence', 0)*100:.0f}%\n"
+        f"• <b>IHSG Close:</b> {res.get('ihsg_close', 0):,.2f}\n"
+        f"• <b>RSI (14):</b> {res.get('rsi', 0):.2f}\n"
+        f"• <b>ATR Volatility:</b> {res.get('atr_pct', 0):.2f}%\n"
     )
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("signal"))
 async def handle_signal(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
-        await message.answer("⚠️ Gunakan format: `/signal [TICKER]` (Contoh: `/signal BBCA`)", parse_mode="Markdown")
+        await message.answer("⚠️ Gunakan format: <code>/signal [TICKER]</code> (Contoh: <code>/signal BBCA</code>)", parse_mode="HTML")
         return
 
     ticker = args[1].upper()
-    await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk *{ticker}*...", parse_mode="Markdown")
+    await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
     response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
     await message.answer(response)
 
@@ -67,23 +67,23 @@ async def handle_signal(message: types.Message):
 async def handle_analyze(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
-        await message.answer("⚠️ Gunakan format: `/analyze [TICKER]` (Contoh: `/analyze BBCA`)", parse_mode="Markdown")
+        await message.answer("⚠️ Gunakan format: <code>/analyze [TICKER]</code> (Contoh: <code>/analyze BBCA</code>)", parse_mode="HTML")
         return
 
     ticker = args[1].upper()
-    await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk *{ticker}*...", parse_mode="Markdown")
+    await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
     response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
-    await message.answer(response, parse_mode="Markdown")
+    await message.answer(response)
 
 @router.message(Command("backtest"))
 async def handle_backtest(message: types.Message):
     args = message.text.split()
     if len(args) < 2:
-        await message.answer("⚠️ Gunakan format: `/backtest [TICKER]` (Contoh: `/backtest BBCA`)", parse_mode="Markdown")
+        await message.answer("⚠️ Gunakan format: <code>/backtest [TICKER]</code> (Contoh: <code>/backtest BBCA</code>)", parse_mode="HTML")
         return
 
     ticker = args[1].upper()
-    await message.answer(f"🧪 Melakukan pengujian historis (backtest) untuk *{ticker}*...", parse_mode="Markdown")
+    await message.answer(f"🧪 Melakukan pengujian historis (backtest) untuk <b>{ticker}</b>...", parse_mode="HTML")
     res = await tools.run_stock_backtest(ticker)
 
     if res.get("status") != "SUCCESS":
@@ -91,15 +91,15 @@ async def handle_backtest(message: types.Message):
         return
 
     text = (
-        f"🧪 *HASIL BACKTEST STRATEGI: {ticker}*\n\n"
-        f"• *Total Perdagangan:* {res['total_trades']}\n"
-        f"• *Win Rate:* {res['win_rate']}%\n"
-        f"• *Profit Factor:* {res['profit_factor']}\n"
-        f"• *Average R (Expectancy):* {res['average_r']} R\n"
-        f"• *Total Return:* {res['total_return_pct']}%\n"
-        f"• *Max Drawdown:* {res['max_drawdown_pct']}%\n"
+        f"🧪 <b>HASIL BACKTEST STRATEGI: {ticker}</b>\n\n"
+        f"• <b>Total Perdagangan:</b> {res['total_trades']}\n"
+        f"• <b>Win Rate:</b> {res['win_rate']}%\n"
+        f"• <b>Profit Factor:</b> {res['profit_factor']}\n"
+        f"• <b>Average R (Expectancy):</b> {res['average_r']} R\n"
+        f"• <b>Total Return:</b> {res['total_return_pct']}%\n"
+        f"• <b>Max Drawdown:</b> {res['max_drawdown_pct']}%\n"
     )
-    await message.answer(text, parse_mode="Markdown")
+    await message.answer(text, parse_mode="HTML")
 
 @router.message(Command("scan"))
 async def handle_scan(message: types.Message):
@@ -115,22 +115,23 @@ async def handle_scan(message: types.Message):
                 results.append((t, score.signal_type, score.total_score, res["setup"].setup_type.value))
 
     if not results:
-        await message.answer("ℹ️ *NO TRADE* — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="Markdown")
+        await message.answer("ℹ️ <b>NO TRADE</b> — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="HTML")
         return
 
-    summary = "🔥 *HASIL SCANNING PASAR IDX TERATAS:*\n\n"
+    summary = "🔥 <b>HASIL SCANNING PASAR IDX TERATAS:</b>\n\n"
     for r in results:
         icon = "🟢" if "BUY" in r[1] else "🟡"
-        summary += f"{icon} *{r[0]}* — `{r[1]}` (Skor: {r[2]}/100)\n   Setup: {r[3]}\n\n"
+        setup_display = r[3].replace("_", " ")
+        summary += f"{icon} <b>{r[0]}</b> — <code>{r[1]}</code> (Skor: {r[2]}/100)\n   Setup: {setup_display}\n\n"
 
-    summary += "Ketik `/signal [TICKER]` untuk detail sinyal."
-    await message.answer(summary, parse_mode="Markdown")
+    summary += "Ketik <code>/signal [TICKER]</code> untuk detail sinyal."
+    await message.answer(summary, parse_mode="HTML")
 
 @router.message()
 async def handle_natural_language(message: types.Message):
     text = message.text.upper()
     match = re.search(r'\b[A-Z]{4}\b', text)
-    
+
     if "MARKET" in text or "IHSG" in text or "PASAR" in text:
         await handle_market(message)
     elif "ANALISA" in text and match:
@@ -140,4 +141,4 @@ async def handle_natural_language(message: types.Message):
         message.text = f"/signal {match.group(0)}"
         await handle_signal(message)
     else:
-        await message.answer("🤖 Ketik `/help` untuk melihat daftar perintah yang tersedia.")
+        await message.answer("🤖 Ketik <code>/help</code> untuk melihat daftar perintah yang tersedia.", parse_mode="HTML")
