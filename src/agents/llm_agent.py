@@ -16,14 +16,14 @@ Panduan Respons:
 """
 
 MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
-MAX_RETRIES = 2
+MAX_RETRIES = 3
 
 
 def _extract_retry_delay(err_str: str, default: float = 5.0) -> float:
     """Extract retryDelay seconds from API error string."""
     match = re.search(r"retryDelay['\"]:\s*['\"](\d+(?:\.\d+)?)s['\"]", err_str)
     if match:
-        return min(float(match.group(1)), 30.0)  # cap at 30s max wait
+        return min(float(match.group(1)), 90.0)  # honor retryDelay up to 90s
     return default
 
 
