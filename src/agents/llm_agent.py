@@ -39,20 +39,18 @@ class LLMAgentService:
             if context_data:
                 prompt += f"\nData Teknikal & Kuantitatif Terkait:\n{context_data}\n"
 
-            # Use gemini-2.5-flash or gemini-1.5-flash as default model
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt
             )
             return response.text if response and response.text else "Maaf, AI tidak mengembalikan respon."
         except Exception as e:
             logging.error(f"Error calling Gemini LLM API: {e}")
-            # Fallback attempt if gemini-2.5-flash fails or legacy model name required
             try:
                 from google import genai
                 client = genai.Client(api_key=self.api_key)
                 response = client.models.generate_content(
-                    model="gemini-1.5-flash",
+                    model="gemini-2.0-flash-lite",
                     contents=prompt
                 )
                 return response.text if response and response.text else "Maaf, AI tidak mengembalikan respon."
