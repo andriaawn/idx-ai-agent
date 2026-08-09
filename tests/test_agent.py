@@ -71,6 +71,38 @@ class TestAgentSystem(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis["market_regime"]["status"], "UNAVAILABLE")
         self.assertEqual(analysis["score_breakdown"].regime_score, 0.0)
 
+    async def test_invalid_daily_raw_data_is_rejected_before_normalization(self):
+        class Provider:
+            async def get_historical_ohlcv(self, symbol, timeframe="1d"):
+                df = sample_ohlcv()
+                if timeframe == "1d" and symbol == "BBCA.JK":
+                    df.loc[df.index[0], "open"] = None
+                return df
+
+        tools = QuantAgentTools()
+        tools.provider = Provider()
+        tools.get_market_status = AsyncMock(return_value={"regime": "BULLISH"})
+        with patch("src.agents.tools.TickerResolver.resolve_ticker", new=AsyncMock(return_value="BBCA.JK")):
+            analysis = await tools.analyze_stock("BBCA")
+
+        self.assertEqual(analysis["status"], "DATA_UNRELIABLE")
+        self.assertIn("missing OHLCV", " ".join(analysis["issues"]))
+
+    async def test_invalid_ihsg_raw_data_is_unavailable(self):
+        class Provider:
+            async def get_historical_ohlcv(self, symbol, timeframe="1d"):
+                df = sample_ohlcv()
+                if symbol == "^JKSE":
+                    df.loc[df.index[0], "volume"] = None
+                return df
+
+        tools = QuantAgentTools()
+        tools.provider = Provider()
+        market = await tools.get_market_status()
+
+        self.assertEqual(market["status"], "UNAVAILABLE")
+        self.assertIn("missing OHLCV", " ".join(market["issues"]))
+
     async def test_invalid_weekly_data_is_not_used_for_mtf(self):
         class Provider:
             async def get_historical_ohlcv(self, symbol, timeframe="1d"):

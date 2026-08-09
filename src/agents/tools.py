@@ -26,7 +26,9 @@ class QuantAgentTools:
         ihsg_df = await self.provider.get_historical_ohlcv("^JKSE", timeframe="1d")
         if ihsg_df.empty:
             return {"status": "UNAVAILABLE", "message": "Failed to fetch IHSG data"}
-        
+        validation = MarketDataValidator.validate_ohlcv(ihsg_df)
+        if not validation.is_valid:
+            return {"status": "UNAVAILABLE", "message": "IHSG data is unreliable", "issues": validation.issues}
         normalized_df = MarketDataNormalizer.normalize(ihsg_df)
         return MarketRegimeAnalyzer.analyze_regime(normalized_df)
 
@@ -51,19 +53,19 @@ class QuantAgentTools:
         if df.empty:
             return {"status": "ERROR", "reason": "No price data found for ticker"}
 
-        clean_df = MarketDataNormalizer.normalize(df)
-        val = MarketDataValidator.validate_ohlcv(clean_df)
+        val = MarketDataValidator.validate_ohlcv(df)
 
         if not val.is_valid:
             return {"status": "DATA_UNRELIABLE", "issues": val.issues, "score": val.score}
+        clean_df = MarketDataNormalizer.normalize(df)
 
         snapshot = TechnicalIndicators.get_snapshot(clean_df)
         htf_snapshot = None
         htf_data_quality_score = None
         if not htf_df.empty:
-            clean_htf_df = MarketDataNormalizer.normalize(htf_df)
-            htf_validation = MarketDataValidator.validate_ohlcv(clean_htf_df)
-            if htf_validation.is_valid and len(clean_htf_df) >= self.MINIMUM_HTF_BARS:
+            htf_validation = MarketDataValidator.validate_ohlcv(htf_df)
+            if htf_validation.is_valid and len(htf_df) >= self.MINIMUM_HTF_BARS:
+                clean_htf_df = MarketDataNormalizer.normalize(htf_df)
                 htf_data_quality_score = htf_validation.score
                 htf_snapshot = TechnicalIndicators.get_snapshot(clean_htf_df)
             else:
