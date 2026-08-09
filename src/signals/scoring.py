@@ -18,13 +18,45 @@ class ScoreBreakdown:
 class SignalScorer:
     """Transparent Scoring Framework for Signal Generation."""
 
+    BUY_DIRECTION = "BUY"
+    SELL_DIRECTION = "SELL"
+
+    @staticmethod
+    def _directional_score(
+        raw_score: Optional[float],
+        source_direction: Optional[str],
+        signal_direction: Optional[str],
+        maximum: float,
+    ) -> float:
+        """Award confirmation only when a directional input supports the trade.
+
+        The current setup/risk pipeline is long-only, but accepting an explicit
+        direction keeps MTF and regime scoring correct for future short setups.
+        Unknown, neutral, or unavailable context intentionally earns no points.
+        """
+        if raw_score is None or not source_direction or not signal_direction:
+            return 0.0
+
+        source = source_direction.upper()
+        trade = signal_direction.upper()
+        expected_source = "BULLISH" if trade == SignalScorer.BUY_DIRECTION else (
+            "BEARISH" if trade == SignalScorer.SELL_DIRECTION else None
+        )
+        if source != expected_source:
+            return 0.0
+
+        bounded_score = max(0.0, min(100.0, raw_score))
+        return (bounded_score / 100.0) * maximum
+
     @staticmethod
     def score_signal(
         snapshot: TechnicalSnapshot, 
         setup: DetectedSetup, 
         risk_plan: Optional[RiskPlan],
-        mtf_score: float = 50.0,
-        regime_status: str = "BULLISH",
+        mtf_score: Optional[float] = None,
+        mtf_direction: Optional[str] = None,
+        regime_status: Optional[str] = None,
+        signal_direction: Optional[str] = None,
         min_score_threshold: float = 70.0
     ) -> ScoreBreakdown:
         if not snapshot or not risk_plan or not risk_plan.is_valid_rr:
@@ -53,8 +85,14 @@ class SignalScorer:
 
         volume_score = min(15.0, snapshot.rvol * 10.0)
         structure_score = setup.quality_score * 0.20
-        mtf_weighted = (mtf_score / 100.0) * 15.0
-        regime_score = 10.0 if regime_status == "BULLISH" else (5.0 if regime_status == "SIDEWAYS" else 0.0)
+        mtf_weighted = SignalScorer._directional_score(
+            mtf_score, mtf_direction, signal_direction, maximum=15.0
+        )
+
+        actual_regime = regime_status.upper() if regime_status else "UNAVAILABLE"
+        regime_score = SignalScorer._directional_score(
+            100.0, actual_regime, signal_direction, maximum=10.0
+        )
 
         total = trend_score + momentum_score + volume_score + structure_score + mtf_weighted + regime_score
         total_score = round(min(100.0, total), 2)

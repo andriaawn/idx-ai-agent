@@ -7,7 +7,13 @@ from src.signals.scoring import SignalScorer
 from src.backtesting.metrics import TradeRecord, BacktestPerformance, PerformanceCalculator
 
 class BacktestEngine:
-    """Historical Event-Driven Backtest Simulation Engine (Zero look-ahead bias)."""
+    """Historical Event-Driven Backtest Simulation Engine (Zero look-ahead bias).
+
+    This standalone engine receives only one instrument's daily OHLCV data.
+    It therefore passes explicit unavailable MTF and market-regime context to
+    the scorer rather than fabricating weekly or benchmark data. Its scores are
+    deliberately conservative and are not equivalent to live analysis scores.
+    """
 
     def __init__(
         self, 
@@ -97,7 +103,16 @@ class BacktestEngine:
                 if not risk_plan or not risk_plan.is_valid_rr:
                     continue
 
-                score = SignalScorer.score_signal(snapshot, setup, risk_plan, min_score_threshold=self.min_score)
+                score = SignalScorer.score_signal(
+                    snapshot,
+                    setup,
+                    risk_plan,
+                    mtf_score=None,
+                    mtf_direction=None,
+                    regime_status=None,
+                    signal_direction=SignalScorer.BUY_DIRECTION,
+                    min_score_threshold=self.min_score,
+                )
 
                 if score.signal_type in ["BUY", "STRONG_BUY"]:
                     entry_price = current_price * (1 + self.slippage)

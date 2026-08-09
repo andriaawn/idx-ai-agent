@@ -5,6 +5,7 @@ from src.data.normalizers import MarketDataNormalizer
 from src.data.validators import MarketDataValidator
 from src.indicators.technical import TechnicalIndicators
 from src.analysis.regime import MarketRegimeAnalyzer
+from src.analysis.multi_timeframe import MultiTimeframeAnalyzer
 from src.analysis.setup_detection import SetupDetector
 from src.risk.engine import RiskEngine
 from src.signals.scoring import SignalScorer
@@ -14,6 +15,8 @@ from src.data.ticker_resolver import TickerResolver
 
 class QuantAgentTools:
     """Quantitative analysis tools callable by the AI Agent."""
+
+    MINIMUM_HTF_BARS = 50
 
     def __init__(self):
         self.provider = YFinanceProvider()
@@ -32,7 +35,18 @@ class QuantAgentTools:
         if not canonical_ticker:
             return {"status": "ERROR", "reason": "Ticker is not a valid IDX listing"}
 
-        df = await self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d")
+        df, htf_df, market_regime = await asyncio.gather(
+            self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d"),
+            self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1wk"),
+            self.get_market_status(),
+            return_exceptions=True,
+        )
+        if isinstance(df, Exception):
+            return {"status": "ERROR", "reason": "Failed to fetch daily price data"}
+        if isinstance(htf_df, Exception):
+            htf_df = df.iloc[0:0]
+        if isinstance(market_regime, Exception):
+            market_regime = {"status": "UNAVAILABLE", "message": "Failed to fetch IHSG data"}
         if df.empty:
             return {"status": "ERROR", "reason": "No price data found for ticker"}
 
@@ -43,15 +57,42 @@ class QuantAgentTools:
             return {"status": "DATA_UNRELIABLE", "issues": val.issues, "score": val.score}
 
         snapshot = TechnicalIndicators.get_snapshot(clean_df)
+        htf_snapshot = None
+        htf_data_quality_score = None
+        if not htf_df.empty:
+            clean_htf_df = MarketDataNormalizer.normalize(htf_df)
+            htf_validation = MarketDataValidator.validate_ohlcv(clean_htf_df)
+            if htf_validation.is_valid and len(clean_htf_df) >= self.MINIMUM_HTF_BARS:
+                htf_data_quality_score = htf_validation.score
+                htf_snapshot = TechnicalIndicators.get_snapshot(clean_htf_df)
+            else:
+                # An invalid or insufficient HTF dataset is unavailable for MTF
+                # scoring, so do not expose its partial diagnostic score as usable
+                # HTF data quality.
+                htf_data_quality_score = 0.0
+
+        mtf_analysis = MultiTimeframeAnalyzer.evaluate_alignment(htf_snapshot, snapshot)
         setup = SetupDetector.detect_setups(canonical_ticker, snapshot)
         risk_plan = RiskEngine.calculate_risk_plan(snapshot, setup)
-        score_breakdown = SignalScorer.score_signal(snapshot, setup, risk_plan)
+        score_breakdown = SignalScorer.score_signal(
+            snapshot,
+            setup,
+            risk_plan,
+            mtf_score=mtf_analysis["alignment_score"],
+            mtf_direction=mtf_analysis["direction"],
+            regime_status=market_regime.get("regime"),
+            signal_direction=SignalScorer.BUY_DIRECTION,
+        )
 
         return {
             "status": "SUCCESS",
             "ticker": canonical_ticker,
             "data_quality_score": val.score,
+            "htf_data_quality_score": htf_data_quality_score,
             "snapshot": snapshot,
+            "htf_snapshot": htf_snapshot,
+            "mtf_analysis": mtf_analysis,
+            "market_regime": market_regime,
             "setup": setup,
             "risk_plan": risk_plan,
             "score_breakdown": score_breakdown

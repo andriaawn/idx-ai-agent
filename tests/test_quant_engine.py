@@ -42,5 +42,14 @@ class TestQuantEngine(unittest.TestCase):
         mtf = MultiTimeframeAnalyzer.evaluate_alignment(snap1, snap2)
         self.assertTrue(0 <= mtf["alignment_score"] <= 100)
 
+    def test_multi_timeframe_unavailable_has_no_direction_or_score(self):
+        df = generate_sample_data(60)
+        snapshot = TechnicalIndicators.get_snapshot(df)
+
+        mtf = MultiTimeframeAnalyzer.evaluate_alignment(None, snapshot)
+
+        self.assertIsNone(mtf["alignment_score"])
+        self.assertEqual(mtf["direction"], "UNAVAILABLE")
+
 if __name__ == "__main__":
     unittest.main()

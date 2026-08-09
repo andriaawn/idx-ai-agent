@@ -63,6 +63,10 @@ Setup: {setup.setup_type.value}
         setup: DetectedSetup = analysis_data["setup"]
         risk: Optional[RiskPlan] = analysis_data.get("risk_plan")
         score: ScoreBreakdown = analysis_data["score_breakdown"]
+        mtf_analysis = analysis_data.get("mtf_analysis", {})
+        market_regime = analysis_data.get("market_regime", {})
+        mtf_raw_score = mtf_analysis.get("alignment_score")
+        mtf_raw_display = f"{mtf_raw_score}/100" if mtf_raw_score is not None else "Unavailable"
 
         risk_section = f"""- **Suggested Entry Zone:** {risk.entry_zone_min:,.2f} – {risk.entry_zone_max:,.2f}
 - **Stop Loss:** {risk.stop_loss:,.2f} IDR
@@ -102,8 +106,8 @@ Setup: {setup.setup_type.value}
 - **Momentum:** {score.momentum_score}/20
 - **Volume Confirmation:** {score.volume_score}/15
 - **Technical Structure:** {score.structure_score}/20
-- **MTF Alignment:** {score.mtf_score}/15
-- **Market Regime:** {score.regime_score}/10
+- **MTF Alignment:** {score.mtf_score}/15 ({mtf_analysis.get('status', 'UNAVAILABLE')}; direction: {mtf_analysis.get('direction', 'UNAVAILABLE')}; raw: {mtf_raw_display})
+- **Market Regime:** {score.regime_score}/10 ({market_regime.get('regime', 'UNAVAILABLE')})
 
 ## 6. Case & Invalidation
 - **Bull Case:** {setup.evidence[0] if (setup and setup.evidence) else 'Aligned momentum and volume.'}
