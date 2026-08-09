@@ -49,6 +49,12 @@ class TestAgentSystem(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(analysis["status"], "SUCCESS")
         self.assertEqual(analysis["mtf_analysis"]["status"], "INSUFFICIENT_DATA")
         self.assertEqual(analysis["score_breakdown"].mtf_score, 0.0)
+        self.assertIn("chart_data", analysis)
+        self.assertEqual(analysis["chart_data"].signal.verdict, analysis["score_breakdown"].signal_type)
+        self.assertEqual(
+            analysis["chart_data"].signal.direction,
+            "BUY" if analysis["score_breakdown"].signal_type in {"BUY", "STRONG_BUY"} else None,
+        )
 
     async def test_ihsg_failure_keeps_live_analysis_conservative(self):
         class Provider:

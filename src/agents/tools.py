@@ -12,6 +12,7 @@ from src.signals.scoring import SignalScorer
 from src.backtesting.engine import BacktestEngine
 from src.data.universe import POPULAR_IDX_STOCKS, IDXUniverseRefresher
 from src.data.ticker_resolver import TickerResolver
+from src.charting.data import ChartDataAdapter
 
 class QuantAgentTools:
     """Quantitative analysis tools callable by the AI Agent."""
@@ -83,6 +84,18 @@ class QuantAgentTools:
             regime_status=market_regime.get("regime"),
             signal_direction=SignalScorer.BUY_DIRECTION,
         )
+        chart_data = ChartDataAdapter.from_analysis(
+            ticker=canonical_ticker,
+            ohlcv=clean_df,
+            risk_plan=risk_plan,
+            signal_direction=SignalScorer.BUY_DIRECTION,
+            mtf_context=mtf_analysis,
+            regime_context=market_regime,
+            data_quality_score=val.score,
+            htf_data_quality_score=htf_data_quality_score,
+            timeframe="1d",
+            score_breakdown=score_breakdown,
+        )
 
         return {
             "status": "SUCCESS",
@@ -95,7 +108,8 @@ class QuantAgentTools:
             "market_regime": market_regime,
             "setup": setup,
             "risk_plan": risk_plan,
-            "score_breakdown": score_breakdown
+            "score_breakdown": score_breakdown,
+            "chart_data": chart_data,
         }
 
     async def run_stock_backtest(self, ticker: str) -> Dict[str, Any]:
