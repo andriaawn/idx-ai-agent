@@ -26,11 +26,13 @@ class TechnicalSnapshot:
 class TechnicalIndicators:
     """Deterministic calculation engine for technical indicators."""
 
+    MINIMUM_HISTORY = 20
+
     @staticmethod
     def calculate_all(df: pd.DataFrame) -> pd.DataFrame:
         """Applies all technical indicator calculations to the DataFrame."""
-        if df.empty or len(df) < 20:
-            return df
+        if df.empty or len(df) < TechnicalIndicators.MINIMUM_HISTORY:
+            return df.copy()
 
         res = df.copy()
 
@@ -44,9 +46,15 @@ class TechnicalIndicators:
         delta = res["close"].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / (loss.replace(0, np.nan))
-        res["rsi_14"] = 100 - (100 / (1 + rs))
-        res["rsi_14"] = res["rsi_14"].fillna(50.0)
+        # A positive average gain with no average loss is maximally bullish;
+        # the inverse is maximally bearish. A flat window is neutral. Values
+        # before the 14-bar window retain the existing neutral warm-up value.
+        rs = gain / loss.replace(0, np.nan)
+        rsi = 100 - (100 / (1 + rs))
+        rsi = rsi.mask((gain > 0) & (loss == 0), 100.0)
+        rsi = rsi.mask((gain == 0) & (loss > 0), 0.0)
+        rsi = rsi.mask((gain == 0) & (loss == 0), 50.0)
+        res["rsi_14"] = rsi.fillna(50.0)
 
         # 3. MACD (12, 26, 9)
         ema_12 = res["close"].ewm(span=12, adjust=False).mean()
@@ -98,9 +106,13 @@ class TechnicalIndicators:
 
     @staticmethod
     def get_snapshot(df: pd.DataFrame) -> Optional[TechnicalSnapshot]:
-        """Calculates indicators and returns a single snapshot for the latest candle."""
+        """Calculates indicators and returns a latest snapshot when available.
+
+        Frames below ``MINIMUM_HISTORY`` have no complete indicator set and
+        therefore return ``None`` rather than fabricated snapshot values.
+        """
         df_calc = TechnicalIndicators.calculate_all(df)
-        if df_calc.empty:
+        if df_calc.empty or len(df_calc) < TechnicalIndicators.MINIMUM_HISTORY:
             return None
 
         latest = df_calc.iloc[-1]

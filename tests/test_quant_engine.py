@@ -17,6 +17,18 @@ def generate_sample_data(length=60):
     }, index=dates)
     return df
 
+
+def generate_price_data(closes):
+    closes = np.asarray(closes, dtype=float)
+    dates = pd.date_range("2024-01-01", periods=len(closes), freq="D")
+    return pd.DataFrame({
+        "open": closes,
+        "high": closes + 1.0,
+        "low": closes - 1.0,
+        "close": closes,
+        "volume": np.full(len(closes), 1_000.0),
+    }, index=dates)
+
 class TestQuantEngine(unittest.TestCase):
 
     def test_technical_indicators_calculation(self):
@@ -50,6 +62,56 @@ class TestQuantEngine(unittest.TestCase):
 
         self.assertIsNone(mtf["alignment_score"])
         self.assertEqual(mtf["direction"], "UNAVAILABLE")
+
+    def test_rsi_is_100_for_persistent_gains_with_zero_average_loss(self):
+        result = TechnicalIndicators.calculate_all(generate_price_data(range(100, 121)))
+
+        self.assertEqual(result["rsi_14"].iloc[-1], 100.0)
+
+    def test_rsi_is_0_for_persistent_losses_with_zero_average_gain(self):
+        result = TechnicalIndicators.calculate_all(generate_price_data(range(120, 99, -1)))
+
+        self.assertEqual(result["rsi_14"].iloc[-1], 0.0)
+
+    def test_rsi_is_50_for_flat_prices(self):
+        result = TechnicalIndicators.calculate_all(generate_price_data([100.0] * 21))
+
+        self.assertEqual(result["rsi_14"].iloc[-1], 50.0)
+
+    def test_normal_length_rsi_preserves_ordinary_formula(self):
+        closes = [100, 102, 101, 104, 103, 105, 104, 107, 106, 108, 107, 109, 108, 111, 110, 112, 111, 114, 113, 115]
+        result = TechnicalIndicators.calculate_all(generate_price_data(closes))
+        deltas = np.diff(closes, prepend=np.nan)
+        deltas[0] = 0.0
+        deltas = deltas[-14:]
+        average_gain = np.where(deltas > 0, deltas, 0).mean()
+        average_loss = np.where(deltas < 0, -deltas, 0).mean()
+        expected = 100 - (100 / (1 + average_gain / average_loss))
+
+        self.assertAlmostEqual(result["rsi_14"].iloc[-1], expected)
+
+    def test_insufficient_history_has_no_indicator_columns(self):
+        short = generate_price_data(range(100, 119))
+        result = TechnicalIndicators.calculate_all(short)
+
+        self.assertEqual(list(result.columns), list(short.columns))
+        self.assertEqual(len(result), len(short))
+
+    def test_short_non_empty_history_has_no_snapshot(self):
+        snapshot = TechnicalIndicators.get_snapshot(generate_price_data(range(100, 119)))
+
+        self.assertIsNone(snapshot)
+
+    def test_existing_indicators_remain_available_at_minimum_history(self):
+        result = TechnicalIndicators.calculate_all(generate_price_data(range(100, 120)))
+        snapshot = TechnicalIndicators.get_snapshot(generate_price_data(range(100, 120)))
+
+        self.assertIn("ema_20", result.columns)
+        self.assertIn("macd_line", result.columns)
+        self.assertIn("atr_14", result.columns)
+        self.assertIn("rvol", result.columns)
+        self.assertIn("roc_10", result.columns)
+        self.assertIsNotNone(snapshot)
 
 if __name__ == "__main__":
     unittest.main()
