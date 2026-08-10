@@ -1,16 +1,52 @@
+import logging
+
 from aiogram import Router, types
 from aiogram.filters import CommandStart, Command
-from src.agents.orchestrator import AgentOrchestrator
 from src.agents.tools import QuantAgentTools
 from src.agents.llm_agent import LLMAgentService
+from src.agents.reporter import ResearchReportGenerator
+from src.charting.renderer import ChartRenderer
 from src.data.universe import IDXUniverseRefresher
 from src.data.ticker_resolver import TickerResolver
-from src.telegram.messages import send_markdown_message, send_message_chunks
+from src.telegram.messages import send_markdown_message, send_message_chunks, send_png_photo
 
 router = Router()
-orchestrator = AgentOrchestrator()
 tools = QuantAgentTools()
 llm_agent = LLMAgentService(tools=tools)
+
+
+async def _send_chart_if_available(message: types.Message, analysis: dict) -> None:
+    """Best-effort chart delivery that never prevents the text response."""
+    chart_data = analysis.get("chart_data")
+    if chart_data is None:
+        return
+    try:
+        chart_bytes = ChartRenderer.render(chart_data)
+        await send_png_photo(message, chart_bytes, filename="analysis-chart.png")
+    except Exception:
+        logging.exception("Chart delivery failed; continuing with analytical text")
+
+
+async def _deliver_ticker_analysis(message: types.Message, ticker: str, detailed: bool) -> None:
+    """Deliver the existing deterministic analysis, with an optional chart first."""
+    analysis = await tools.analyze_stock(ticker)
+    if analysis.get("status") != "SUCCESS":
+        response = f"âš ï¸ Analysis failed for {ticker}: {analysis.get('reason', 'Data unavailable')}"
+    else:
+        await _send_chart_if_available(message, analysis)
+        if detailed:
+            response = ResearchReportGenerator.generate_full_research_report(analysis)
+        else:
+            response = ResearchReportGenerator.generate_short_signal_alert(
+                ticker=ticker,
+                score=analysis["score_breakdown"],
+                setup=analysis["setup"],
+                risk=analysis["risk_plan"],
+            )
+    if detailed:
+        await send_markdown_message(message, response)
+    else:
+        await send_message_chunks(message, response)
 
 @router.message(CommandStart())
 async def handle_start(message: types.Message):
@@ -64,8 +100,7 @@ async def handle_signal(message: types.Message):
 
     ticker = args[1].upper()
     await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
-    response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-    await send_message_chunks(message, response)
+    await _deliver_ticker_analysis(message, ticker, detailed=False)
 
 @router.message(Command("analyze"))
 async def handle_analyze(message: types.Message):
@@ -76,8 +111,7 @@ async def handle_analyze(message: types.Message):
 
     ticker = args[1].upper()
     await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
-    response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
-    await send_markdown_message(message, response)
+    await _deliver_ticker_analysis(message, ticker, detailed=True)
 
 @router.message(Command("backtest"))
 async def handle_backtest(message: types.Message):
@@ -141,21 +175,18 @@ async def handle_natural_language(message: types.Message):
     elif (("ANALISA" in text or "ANALYZE" in text or "LAPORAN" in text or "DETAIL" in text) and tickers):
         ticker = tickers[0]
         await message.answer(f"🔍 Menyusun laporan riset ekuitas lengkap untuk <b>{ticker}</b>...", parse_mode="HTML")
-        response = await orchestrator.process_ticker_analysis(ticker, detailed=True)
-        await send_markdown_message(message, response)
+        await _deliver_ticker_analysis(message, ticker, detailed=True)
 
     elif (("SINYAL" in text or "SIGNAL" in text or "BELI" in text or "ENTRY" in text) and tickers):
         ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
-        response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-        await send_message_chunks(message, response)
+        await _deliver_ticker_analysis(message, ticker, detailed=False)
 
     elif tickers and len(text.split()) <= 2:
         # Short query with just a ticker — default to signal
         ticker = tickers[0]
         await message.answer(f"⏳ Mengalkulasi sinyal kuantitatif untuk <b>{ticker}</b>...", parse_mode="HTML")
-        response = await orchestrator.process_ticker_analysis(ticker, detailed=False)
-        await send_message_chunks(message, response)
+        await _deliver_ticker_analysis(message, ticker, detailed=False)
 
     else:
         # --- Interactive AI path: open-ended, comparative, educational ---

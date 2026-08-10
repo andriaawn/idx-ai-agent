@@ -4,6 +4,8 @@ import html
 import re
 from typing import Any, List, Optional, Sequence, Tuple
 
+from aiogram.types import BufferedInputFile
+
 
 # Telegram accepts at most 4096 characters. Keeping a small margin also leaves
 # room for HTML tags that are reopened at a chunk boundary.
@@ -228,3 +230,8 @@ async def send_markdown_message(message: Any, markdown: str) -> None:
         markdown_to_telegram_html(markdown),
         parse_mode="HTML",
     )
+
+
+async def send_png_photo(message: Any, png_bytes: bytes, filename: str = "analysis-chart.png") -> None:
+    """Deliver in-memory PNG bytes without creating a temporary file."""
+    await message.answer_photo(BufferedInputFile(png_bytes, filename=filename))

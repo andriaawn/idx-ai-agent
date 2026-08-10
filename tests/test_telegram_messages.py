@@ -3,9 +3,11 @@ import unittest
 
 from src.telegram.messages import (
     markdown_to_telegram_html,
+    send_png_photo,
     send_markdown_message,
     split_telegram_message,
 )
+from aiogram.types import BufferedInputFile
 
 
 class FakeMessage:
@@ -14,6 +16,9 @@ class FakeMessage:
 
     async def answer(self, text, parse_mode=None):
         self.sent.append((text, parse_mode))
+
+    async def answer_photo(self, photo):
+        self.sent.append(("photo", photo))
 
 
 class TestTelegramMessageSplitting(unittest.TestCase):
@@ -92,6 +97,17 @@ class TestMarkdownDelivery(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("<b>Laporan BBCA</b>" in text for text, _ in message.sent))
         self.assertTrue(any("<code>BBCA</code>" in text for text, _ in message.sent))
         self.assertTrue(all(text.count("<i>") == text.count("</i>") for text, _ in message.sent))
+
+    async def test_png_photo_delivery_uses_buffered_bytes_without_file(self):
+        message = FakeMessage()
+
+        await send_png_photo(message, b"\x89PNG\r\n\x1a\nchart", filename="bbca.png")
+
+        kind, photo = message.sent[0]
+        self.assertEqual(kind, "photo")
+        self.assertIsInstance(photo, BufferedInputFile)
+        self.assertEqual(photo.data, b"\x89PNG\r\n\x1a\nchart")
+        self.assertEqual(photo.filename, "bbca.png")
 
 
 if __name__ == "__main__":
