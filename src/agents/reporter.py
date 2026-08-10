@@ -14,6 +14,8 @@ class ResearchReportGenerator:
         setup: DetectedSetup,
         risk: Optional[RiskPlan]
     ) -> str:
+        #ticker = str(ticker).removesuffix(".JK")
+        display_ticker = ticker.removesuffix(".JK")
         """Generates scannable Telegram signal alert."""
         icon = "🟢" if score.signal_type in ["BUY", "STRONG_BUY"] else ("🟡" if score.signal_type == "WATCHLIST" else "⚪")
         
@@ -21,7 +23,7 @@ class ResearchReportGenerator:
 
         if not risk:
             return f"""━━━━━━━━━━━━━━━━━━
-{icon} {score.signal_type} — {ticker}
+{icon} {score.signal_type} — {display_ticker}
 Setup: {setup.setup_type.value if setup else "NO_SETUP"}
 ━━━━━━━━━━━━━━━━━━
 
@@ -33,7 +35,7 @@ Setup: {setup.setup_type.value if setup else "NO_SETUP"}
 ━━━━━━━━━━━━━━━━━━"""
 
         alert = f"""━━━━━━━━━━━━━━━━━━
-{icon} {score.signal_type} — {ticker}
+{icon} {score.signal_type} — {display_ticker}
 Setup: {setup.setup_type.value}
 ━━━━━━━━━━━━━━━━━━
 
@@ -58,7 +60,10 @@ Setup: {setup.setup_type.value}
         if analysis_data.get("status") != "SUCCESS":
             return f"❌ Cannot generate report: {analysis_data.get('reason', 'Data unavailable')}"
 
+        #ticker = analysis_data["ticker"]
+        #ticker = str(analysis_data["ticker"]).removesuffix(".JK")
         ticker = analysis_data["ticker"]
+        display_ticker = ticker.removesuffix(".JK")
         snap: TechnicalSnapshot = analysis_data["snapshot"]
         setup: DetectedSetup = analysis_data["setup"]
         risk: Optional[RiskPlan] = analysis_data.get("risk_plan")
@@ -77,10 +82,10 @@ Setup: {setup.setup_type.value}
 
         invalidation_str = f"Close below {risk.invalidation_level:,.2f} IDR." if risk else "N/A"
 
-        report = f"""# 📈 DETAILED EQUITY RESEARCH REPORT: {ticker}
+        report = f"""# 📈 DETAILED EQUITY RESEARCH REPORT: {display_ticker}
 
 ## 1. Executive Summary
-- **Ticker:** {ticker}
+- **Ticker:** {display_ticker}
 - **Verdict:** `{score.signal_type}`
 - **Setup Score:** {score.total_score}/100
 - **Primary Setup:** {setup.setup_type.value if setup else "NO_SETUP"}
