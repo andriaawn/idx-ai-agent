@@ -152,7 +152,10 @@ async def handle_scan(message: types.Message):
 
     summary = f"🔥 <b>HASIL SCANNING PASAR IDX TERATAS ({len(results)} Ditemukan dari {total_universe} Saham):</b>\n\n"
     for res in results[:10]:
+        #t = res["ticker"]
         t = res["ticker"]
+        if t.endswith(".JK"):
+            t = t[:-3]
         score = res["score_breakdown"]
         setup = res["setup"]
         icon = "🟢" if "BUY" in score.signal_type else "🟡"
