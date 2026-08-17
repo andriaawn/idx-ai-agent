@@ -8,6 +8,7 @@ from src.agents.reporter import ResearchReportGenerator
 from src.charting.renderer import ChartRenderer
 from src.data.universe import IDXUniverseRefresher
 from src.data.ticker_resolver import TickerResolver
+from src.config.settings import settings
 from src.telegram.messages import send_markdown_message, send_message_chunks, send_png_photo
 
 router = Router()
@@ -51,29 +52,69 @@ async def _deliver_ticker_analysis(message: types.Message, ticker: str, detailed
 @router.message(CommandStart())
 async def handle_start(message: types.Message):
     welcome_text = (
-        "🤖 <b>IDX AI Agent — Quantitative Equity Research Assistant</b>\n\n"
-        "Selamat datang! Saya adalah asisten riset kuantitatif independen untuk Bursa Efek Indonesia (IDX).\n\n"
-        "📌 <b>Perintah Utama:</b>\n"
-        "• <code>/signal BBCA</code> - Sinyal trading cepat (Entry, Stop Loss, Target, R:R)\n"
-        "• <code>/analyze BBCA</code> - Laporan riset ekuitas lengkap 22 poin\n"
-        "• <code>/scan</code> - Pemindaian pasar mencari saham momentum &amp; breakout terbaik\n"
-        "• <code>/market</code> - Status pasar IHSG (Regime &amp; Volatilitas)\n"
-        "• <code>/backtest BBCA</code> - Simulasi performa sinyal historis\n"
-        "• <code>/help</code> - Panduan penggunaan\n\n"
-        "💡 <b>Pertanyaan Natural:</b> Anda juga bisa langsung mengetik pesan seperti:\n"
-        "<i>'analisa BBCA'</i>, <i>'bagaimana kondisi pasar?'</i>, <i>'sinyal TLKM'</i>\n"
+        "🤖 <b>IDX AI Agent</b>\n"
+        "<i>Asisten riset kuantitatif saham IDX — bukan rekomendasi investasi.</i>\n\n"
+
+        "<b>🔎 Temukan Peluang</b>\n"
+        "• <code>/scan</code> — Scan seluruh IDX, tampilkan 10 kandidat terbaik\n"
+        "• <code>/candidates</code> — Lihat semua kandidat (lanjut: <code>/candidates 2</code>)\n"
+        "• <code>/volume_spike</code> — Radar saham dengan lonjakan volume hari ini\n"
+        "• <code>/market</code> — Status & rezim pasar IHSG saat ini\n\n"
+
+        "<b>📊 Analisis Saham</b>\n"
+        "• <code>/signal BBCA</code> — Sinyal, chart, entry, SL & target\n"
+        "• <code>/analyze BBCA</code> — Laporan riset lengkap\n"
+        "• <code>/backtest BBCA</code> — Simulasi historis strategi\n\n"
+
+        "<b>📌 Monitoring Pribadi</b>\n"
+        "• <code>/follow BBCA</code> — Pantau kandidat & terima alert otomatis\n"
+        "• <code>/follow list</code> — Lihat daftar saham yang dipantau\n"
+        "• <code>/unfollow BBCA</code> — Berhenti memantau\n\n"
+
+        "Ketik <code>/help</code> untuk panduan lengkap & detail setiap command."
     )
     await message.answer(welcome_text, parse_mode="HTML")
 
 @router.message(Command("help"))
 async def handle_help(message: types.Message):
     help_text = (
-        "📖 <b>Panduan Penggunaan Bot:</b>\n\n"
-        "1. <code>/signal [TICKER]</code> : Mendapatkan rekomendasi BUY/WATCHLIST/NO TRADE beserta kalkulasi risk management.\n"
-        "2. <code>/analyze [TICKER]</code> : Membuat laporan analisis teknikal komprehensif.\n"
-        "3. <code>/scan</code> : Pemindaian otomatis seluruh universe IDX untuk rekomendasi teratas.\n"
-        "4. <code>/backtest [TICKER]</code> : Melakukan uji historis strategi pada saham tertentu.\n"
-        "5. <code>/market</code> : Cek kondisi rezim IHSG terkini.\n"
+        "📖 <b>PANDUAN LENGKAP IDX AI AGENT</b>\n\n"
+
+        "<b>🔎 Temukan Peluang</b>\n"
+        "• <code>/scan</code>\n"
+        "  Scan seluruh universe IDX, tampilkan 10 saham dengan setup terkuat.\n"
+        "• <code>/candidates</code> atau <code>/candidates 2</code>\n"
+        "  Lihat semua kandidat dari scan terakhir secara bertahap (10 per halaman).\n"
+        "• <code>/volume_spike</code>\n"
+        "  Radar saham dengan lonjakan volume signifikan & konfirmasi harga hari ini.\n"
+        "• <code>/market</code>\n"
+        "  Cek kondisi & rezim pasar IHSG (Bullish/Sideways/Bearish, RSI, ATR).\n\n"
+
+        "<b>📊 Analisis Ticker</b>\n"
+        "• <code>/signal BBCA</code>\n"
+        "  Ringkasan setup, chart teknikal, harga entry, stop-loss, dan target profit.\n"
+        "• <code>/analyze BBCA</code>\n"
+        "  Laporan riset ekuitas lengkap: skor konfluensi, indikator, level kunci.\n"
+        "• <code>/backtest BBCA</code>\n"
+        "  Simulasi historis strategi: win rate, profit factor, max drawdown, dll.\n\n"
+
+        "<b>📌 Monitoring Pribadi</b>\n"
+        "• <code>/follow BBCA</code> — Tambahkan kandidat dari scan ke daftar pantau.\n"
+        "• <code>/follow list</code> — Lihat semua saham yang sedang dipantau.\n"
+        "• <code>/unfollow BBCA</code> — Hapus saham dari daftar pantau.\n"
+        "• <code>/alerts entry on/off</code> — Aktifkan/nonaktifkan alert entry.\n"
+        "  Jenis alert: <code>entry</code>, <code>breakout</code>, <code>target</code>.\n"
+        "  ⚠️ Alert stop-loss selalu aktif dan tidak dapat dinonaktifkan.\n"
+        "• <code>/account</code> — Lihat paket, jumlah saham dipantau, dan batas akun.\n\n"
+
+        "<b>💬 Cara Cepat (tanpa command)</b>\n"
+        "Anda juga bisa mengetik langsung, misalnya:\n"
+        "• <i>analisa BBCA</i> — laporan lengkap\n"
+        "• <i>sinyal TLKM</i> — sinyal trading\n"
+        "• <i>BBCA</i> — sinyal default untuk ticker tersebut\n"
+        "• <i>kondisi pasar</i> atau <i>IHSG</i> — status pasar\n\n"
+
+        "ℹ️ <i>Informasi ini bersifat edukatif, bukan rekomendasi investasi.</i>"
     )
     await message.answer(help_text, parse_mode="HTML")
 
@@ -144,7 +185,7 @@ async def handle_scan(message: types.Message):
     stocks = await IDXUniverseRefresher.fetch_idx_stocks()
     total_universe = len(stocks)
     await message.answer(f"🔎 Memindai universe pasar IDX (<b>{total_universe} Saham</b>)...", parse_mode="HTML")
-    results = await tools.scan_universe()
+    results = await tools.scan_universe(tickers=[stock["ticker"] for stock in stocks])
 
     if not results:
         await message.answer("ℹ️ <b>NO TRADE</b> — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="HTML")
@@ -162,8 +203,188 @@ async def handle_scan(message: types.Message):
         setup_display = setup.setup_type.value.replace("_", " ")
         summary += f"{icon} <b>{t}</b> — <code>{score.signal_type}</code> (Skor: {score.total_score}/100)\n   Setup: {setup_display}\n\n"
 
-    summary += "Ketik <code>/signal [TICKER]</code> untuk detail sinyal."
+    summary += (
+        "Ketik <code>/signal [TICKER]</code> untuk detail sinyal.\n"
+        "Lihat seluruh kandidat: <code>/candidates</code>"
+    )
     await send_message_chunks(message, summary, parse_mode="HTML")
+
+@router.message(Command("candidates"))
+async def handle_candidates(message: types.Message):
+    """Show a page from the latest persisted market scan without rescanning."""
+    args = message.text.split()
+    page = 1
+    if len(args) >= 3 and args[1].lower() == "page":
+        try:
+            page = max(1, int(args[2]))
+        except ValueError:
+            await message.answer("⚠️ Gunakan format: <code>/candidates page 2</code>", parse_mode="HTML")
+            return
+    elif len(args) >= 2:
+        try:
+            page = max(1, int(args[1]))
+        except ValueError:
+            await message.answer("⚠️ Gunakan format: <code>/candidates</code> atau <code>/candidates page 2</code>", parse_mode="HTML")
+            return
+
+    page_size = 10
+    run, candidates = await tools.get_latest_scan_candidates(
+        offset=(page - 1) * page_size, limit=page_size
+    )
+    if run is None:
+        await message.answer("ℹ️ Belum ada snapshot scan. Jalankan <code>/scan</code> terlebih dahulu.", parse_mode="HTML")
+        return
+    if not candidates:
+        await message.answer(
+            f"ℹ️ Tidak ada kandidat pada halaman {page}. Gunakan <code>/candidates</code> untuk kembali ke halaman pertama.",
+            parse_mode="HTML",
+        )
+        return
+
+    created_at = run.created_at.strftime("%d %b %Y %H:%M UTC")
+    lines = [
+        f"📋 <b>KANDIDAT SCAN — HALAMAN {page}</b>",
+        f"Snapshot: {created_at} | {run.candidate_count} kandidat dari {run.total_scanned} saham\n",
+    ]
+    for index, candidate in enumerate(candidates, start=(page - 1) * page_size + 1):
+        levels = []
+        if candidate.entry_price is not None:
+            levels.append(f"Entry {candidate.entry_price:,.0f}")
+        if candidate.stop_loss is not None:
+            levels.append(f"SL {candidate.stop_loss:,.0f}")
+        if candidate.target_1 is not None:
+            levels.append(f"TP {candidate.target_1:,.0f}")
+        level_text = f"\n   {' | '.join(levels)}" if levels else ""
+        lines.append(
+            f"{index}. <b>{candidate.ticker}</b> — <code>{candidate.signal_type}</code> "
+            f"(Skor {candidate.score:.0f})\n   {candidate.setup_name.replace('_', ' ')}{level_text}"
+        )
+    if page * page_size < run.candidate_count:
+        lines.append(f"\nHalaman berikutnya: <code>/candidates page {page + 1}</code>")
+    await send_message_chunks(message, "\n\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("volume_spike"))
+async def handle_volume_spike(message: types.Message):
+    stocks = await IDXUniverseRefresher.fetch_idx_stocks()
+    await message.answer(
+        f"📈 Memindai lonjakan volume berkualitas pada {len(stocks)} saham IDX...",
+        parse_mode="HTML",
+    )
+    results = await tools.scan_volume_spikes(tickers=[stock["ticker"] for stock in stocks])
+    if not results:
+        await message.answer(
+            "ℹ️ Tidak ada volume spike yang memenuhi kriteria likuiditas dan konfirmasi harga saat ini.",
+            parse_mode="HTML",
+        )
+        return
+
+    lines = ["📈 <b>VOLUME SPIKE — RADAR MOMENTUM</b>", "RVOL dibandingkan rata-rata volume 20 hari. Ini radar riset, bukan rekomendasi beli.\n"]
+    for index, result in enumerate(results[:20], start=1):
+        ticker = result["ticker"][:-3] if result["ticker"].endswith(".JK") else result["ticker"]
+        lines.append(
+            f"{index}. <b>{ticker}</b> — <code>{result['label']}</code>\n"
+            f"   RVOL {result['rvol']:.2f}x | Harga {result['price_change_pct']:+.2f}% | "
+            f"Nilai {result['turnover'] / 1_000_000_000:.1f}B | {result['trend']}"
+        )
+    await send_message_chunks(message, "\n\n".join(lines), parse_mode="HTML")
+
+
+def _telegram_identity(message: types.Message):
+    user = message.from_user
+    return user.id, user.username
+
+
+@router.message(Command("follow"))
+async def handle_follow(message: types.Message):
+    args = message.text.split()
+    user_id, username = _telegram_identity(message)
+    if len(args) >= 2 and args[1].lower() == "list":
+        tier, limit, followed = await tools.list_followed_candidates(user_id)
+        limit_text = "tanpa batas" if limit is None else str(limit)
+        if not followed:
+            await message.answer(f"📌 Monitoring Anda kosong. Paket <code>{tier}</code>: maksimal {limit_text} kandidat.", parse_mode="HTML")
+            return
+        lines = [f"📌 <b>MONITORING ANDA</b> — <code>{tier}</code> ({len(followed)}/{limit_text})"]
+        for item in followed:
+            levels = f"Entry {item.entry_price:,.0f} | SL {item.stop_loss:,.0f} | TP {item.target_1:,.0f}" if item.entry_price is not None and item.stop_loss is not None and item.target_1 is not None else "Level tidak tersedia"
+            lines.append(f"• <b>{item.ticker}</b> — {item.signal_type}, skor {item.score:.0f}\n  {item.setup_name.replace('_', ' ')} | {levels}")
+        await send_message_chunks(message, "\n\n".join(lines), parse_mode="HTML")
+        return
+    if len(args) < 2:
+        await message.answer("⚠️ Gunakan <code>/follow BBCA</code> atau <code>/follow list</code>.", parse_mode="HTML")
+        return
+    result = await tools.follow_latest_candidate(user_id, username, args[1])
+    if result.status == "FOLLOWED":
+        limit_text = "tanpa batas" if result.limit is None else str(result.limit)
+        await message.answer(f"✅ Kandidat <b>{args[1].upper()}</b> ditambahkan ke monitoring Anda ({result.followed_count}/{limit_text}).", parse_mode="HTML")
+    elif result.status == "LIMIT_REACHED":
+        await message.answer("🔒 Batas akun gratis (2 kandidat) tercapai. Hapus kandidat dengan <code>/unfollow TICKER</code>.", parse_mode="HTML")
+    elif result.status == "NOT_A_CANDIDATE":
+        await message.answer("ℹ️ Ticker tersebut tidak ada di kandidat scan terbaru. Lihat <code>/candidates</code>.", parse_mode="HTML")
+    elif result.status == "NO_SCAN":
+        await message.answer("ℹ️ Jalankan <code>/scan</code> terlebih dahulu.", parse_mode="HTML")
+    else:
+        await message.answer("ℹ️ Kandidat tersebut sudah Anda ikuti.", parse_mode="HTML")
+
+
+@router.message(Command("unfollow"))
+async def handle_unfollow(message: types.Message):
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("⚠️ Gunakan <code>/unfollow BBCA</code>.", parse_mode="HTML")
+        return
+    user_id, _ = _telegram_identity(message)
+    removed = await tools.unfollow_candidate(user_id, args[1])
+    text = f"✅ <b>{args[1].upper()}</b> dihapus dari monitoring." if removed else "ℹ️ Ticker tersebut tidak ada di monitoring Anda."
+    await message.answer(text, parse_mode="HTML")
+
+
+@router.message(Command("account"))
+async def handle_account(message: types.Message):
+    user_id, _ = _telegram_identity(message)
+    tier, limit, followed = await tools.list_followed_candidates(user_id)
+    limit_text = "Tanpa batas" if limit is None else str(limit)
+    await message.answer(
+        f"👤 <b>AKUN ANDA</b>\n\nPaket: <code>{tier}</code>\nMonitoring: {len(followed)}/{limit_text}\nID: <code>{user_id}</code>",
+        parse_mode="HTML",
+    )
+
+
+@router.message(Command("alerts"))
+async def handle_alerts(message: types.Message):
+    args = message.text.split()
+    if len(args) != 3 or args[1].lower() not in {"entry", "breakout", "target"} or args[2].lower() not in {"on", "off"}:
+        await message.answer("🔔 Atur alert: <code>/alerts entry on</code>, <code>/alerts breakout off</code>, atau <code>/alerts target on</code>. Stop-loss selalu aktif.", parse_mode="HTML")
+        return
+    user_id, _ = _telegram_identity(message)
+    enabled = args[2].lower() == "on"
+    await tools.update_alert_preference(user_id, args[1].lower(), enabled)
+    await message.answer(f"✅ Alert <code>{args[1].upper()}</code> {'aktif' if enabled else 'nonaktif'}. Stop-loss selalu aktif.", parse_mode="HTML")
+
+
+async def _set_tier(message: types.Message, tier: str) -> None:
+    admin_id = str(settings.admin_id).strip()
+    if not admin_id or str(message.from_user.id) != admin_id:
+        await message.answer("⛔ Command ini hanya untuk admin.", parse_mode="HTML")
+        return
+    args = message.text.split()
+    if len(args) != 2 or not args[1].isdigit():
+        await message.answer(f"⚠️ Gunakan <code>/{'grant_premium' if tier == 'PREMIUM' else 'revoke_premium'} TELEGRAM_USER_ID</code>", parse_mode="HTML")
+        return
+    target_id = int(args[1])
+    await tools.set_subscription_tier(target_id, tier)
+    await message.answer(f"✅ User <code>{target_id}</code> sekarang berstatus <code>{tier}</code>.", parse_mode="HTML")
+
+
+@router.message(Command("grant_premium"))
+async def handle_grant_premium(message: types.Message):
+    await _set_tier(message, "PREMIUM")
+
+
+@router.message(Command("revoke_premium"))
+async def handle_revoke_premium(message: types.Message):
+    await _set_tier(message, "FREE")
 
 @router.message()
 async def handle_natural_language(message: types.Message):
