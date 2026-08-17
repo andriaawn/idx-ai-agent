@@ -15,6 +15,18 @@ router = Router()
 tools = QuantAgentTools()
 llm_agent = LLMAgentService(tools=tools)
 
+logger = logging.getLogger("telegram.bot")
+
+
+@router.message.outer_middleware()
+async def log_incoming_messages(handler, event: types.Message, data: dict):
+    user = event.from_user
+    username_str = f"@{user.username}" if user and user.username else "no_username"
+    user_id = user.id if user else "unknown"
+    text = event.text or event.caption or "<non-text message>"
+    logger.info(f"Incoming command from User ID: {user_id} ({username_str}) -> Text: {text}")
+    return await handler(event, data)
+
 
 async def _send_chart_if_available(message: types.Message, analysis: dict) -> None:
     """Best-effort chart delivery that never prevents the text response."""
