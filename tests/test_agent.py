@@ -138,7 +138,14 @@ class TestAgentSystem(unittest.IsolatedAsyncioTestCase):
 
     async def test_volume_spike_requires_relative_volume_and_positive_price_confirmation(self):
         qualifying = sample_ohlcv(25)
+        qualifying.loc[qualifying.index[-2], "open"] = 998.0
+        qualifying.loc[qualifying.index[-2], "high"] = 1_005.0
+        qualifying.loc[qualifying.index[-2], "low"] = 995.0
         qualifying.loc[qualifying.index[-2], "close"] = 1_000.0
+
+        qualifying.loc[qualifying.index[-1], "open"] = 1_002.0
+        qualifying.loc[qualifying.index[-1], "high"] = 1_035.0
+        qualifying.loc[qualifying.index[-1], "low"] = 1_000.0
         qualifying.loc[qualifying.index[-1], "close"] = 1_030.0
         qualifying.loc[qualifying.index[-1], "volume"] = 100_000
         rejected = sample_ohlcv(25)

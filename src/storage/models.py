@@ -93,6 +93,7 @@ class UserProfile(Base):
     telegram_user_id = Column(BigInteger, primary_key=True)
     username = Column(String, nullable=True)
     subscription_tier = Column(String, nullable=False, default="FREE")
+    subscription_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

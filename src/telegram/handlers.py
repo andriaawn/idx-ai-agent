@@ -98,14 +98,15 @@ async def handle_help(message: types.Message):
         "• <code>/backtest BBCA</code>\n"
         "  Simulasi historis strategi: win rate, profit factor, max drawdown, dll.\n\n"
 
-        "<b>📌 Monitoring Pribadi</b>\n"
+        "<b>📌 Monitoring & Akun</b>\n"
         "• <code>/follow BBCA</code> — Tambahkan kandidat dari scan ke daftar pantau.\n"
         "• <code>/follow list</code> — Lihat semua saham yang sedang dipantau.\n"
         "• <code>/unfollow BBCA</code> — Hapus saham dari daftar pantau.\n"
         "• <code>/alerts entry on/off</code> — Aktifkan/nonaktifkan alert entry.\n"
         "  Jenis alert: <code>entry</code>, <code>breakout</code>, <code>target</code>.\n"
         "  ⚠️ Alert stop-loss selalu aktif dan tidak dapat dinonaktifkan.\n"
-        "• <code>/account</code> — Lihat paket, jumlah saham dipantau, dan batas akun.\n\n"
+        "• <code>/account</code> — Lihat paket, jumlah saham dipantau, dan sisa masa aktif.\n"
+        "• <code>/donate</code> — Informasi upgrade ke <b>PREMIUM</b> (30 Hari).\n\n"
 
         "<b>💬 Cara Cepat (tanpa command)</b>\n"
         "Anda juga bisa mengetik langsung, misalnya:\n"
@@ -182,6 +183,8 @@ async def handle_backtest(message: types.Message):
 
 @router.message(Command("scan"))
 async def handle_scan(message: types.Message):
+    user_id, _ = _telegram_identity(message)
+    tier, _ = await tools.get_user_tier(user_id)
     stocks = await IDXUniverseRefresher.fetch_idx_stocks()
     total_universe = len(stocks)
     await message.answer(f"🔎 Memindai universe pasar IDX (<b>{total_universe} Saham</b>)...", parse_mode="HTML")
@@ -191,9 +194,11 @@ async def handle_scan(message: types.Message):
         await message.answer("ℹ️ <b>NO TRADE</b> — Tidak ditemukan setup yang memenuhi standar konfluensi saat ini.", parse_mode="HTML")
         return
 
+    display_limit = 5 if tier == "FREE" else 10
+    display_results = results[:display_limit]
+
     summary = f"🔥 <b>HASIL SCANNING PASAR IDX TERATAS ({len(results)} Ditemukan dari {total_universe} Saham):</b>\n\n"
-    for res in results[:10]:
-        #t = res["ticker"]
+    for res in display_results:
         t = res["ticker"]
         if t.endswith(".JK"):
             t = t[:-3]
@@ -203,15 +208,22 @@ async def handle_scan(message: types.Message):
         setup_display = setup.setup_type.value.replace("_", " ")
         summary += f"{icon} <b>{t}</b> — <code>{score.signal_type}</code> (Skor: {score.total_score}/100)\n   Setup: {setup_display}\n\n"
 
-    summary += (
-        "Ketik <code>/signal [TICKER]</code> untuk detail sinyal.\n"
-        "Lihat seluruh kandidat: <code>/candidates</code>"
-    )
+    if tier == "FREE" and len(results) > display_limit:
+        summary += (
+            f"🔒 <i>Menampilkan Top 5 (Paket FREE). {len(results) - display_limit} peluang lainnya tersedia untuk donatur.</i>\n"
+            "Ketik <code>/donate</code> untuk upgrade ke <b>PREMIUM</b>.\n\n"
+        )
+    else:
+        summary += "Lihat seluruh kandidat: <code>/candidates</code>\n\n"
+
+    summary += "Ketik <code>/signal [TICKER]</code> untuk detail sinyal."
     await send_message_chunks(message, summary, parse_mode="HTML")
 
 @router.message(Command("candidates"))
 async def handle_candidates(message: types.Message):
     """Show a page from the latest persisted market scan without rescanning."""
+    user_id, _ = _telegram_identity(message)
+    tier, _ = await tools.get_user_tier(user_id)
     args = message.text.split()
     page = 1
     if len(args) >= 3 and args[1].lower() == "page":
@@ -227,6 +239,15 @@ async def handle_candidates(message: types.Message):
             await message.answer("⚠️ Gunakan format: <code>/candidates</code> atau <code>/candidates page 2</code>", parse_mode="HTML")
             return
 
+    if tier == "FREE" and page > 1:
+        await message.answer(
+            "🔒 <b>Fitur Khusus Donatur (PREMIUM)</b>\n\n"
+            "Akses kandidat halaman 2 dan seterusnya khusus untuk pengguna yang berdonasi (mulai Rp 10.000 / 30 hari).\n\n"
+            "Ketik <code>/donate</code> untuk informasi upgrade.",
+            parse_mode="HTML"
+        )
+        return
+
     page_size = 10
     run, candidates = await tools.get_latest_scan_candidates(
         offset=(page - 1) * page_size, limit=page_size
@@ -240,6 +261,9 @@ async def handle_candidates(message: types.Message):
             parse_mode="HTML",
         )
         return
+
+    if tier == "FREE":
+        candidates = candidates[:5]
 
     created_at = run.created_at.strftime("%d %b %Y %H:%M UTC")
     lines = [
@@ -259,13 +283,17 @@ async def handle_candidates(message: types.Message):
             f"{index}. <b>{candidate.ticker}</b> — <code>{candidate.signal_type}</code> "
             f"(Skor {candidate.score:.0f})\n   {candidate.setup_name.replace('_', ' ')}{level_text}"
         )
-    if page * page_size < run.candidate_count:
+    if tier == "PREMIUM" and page * page_size < run.candidate_count:
         lines.append(f"\nHalaman berikutnya: <code>/candidates page {page + 1}</code>")
+    elif tier == "FREE" and run.candidate_count > 5:
+        lines.append("\n🔒 <i>Upgrade ke PREMIUM untuk melihat seluruh halaman & kandidat: <code>/donate</code></i>")
     await send_message_chunks(message, "\n\n".join(lines), parse_mode="HTML")
 
 
 @router.message(Command("volume_spike"))
 async def handle_volume_spike(message: types.Message):
+    user_id, _ = _telegram_identity(message)
+    tier, _ = await tools.get_user_tier(user_id)
     stocks = await IDXUniverseRefresher.fetch_idx_stocks()
     await message.answer(
         f"📈 Memindai lonjakan volume berkualitas pada {len(stocks)} saham IDX...",
@@ -279,13 +307,21 @@ async def handle_volume_spike(message: types.Message):
         )
         return
 
+    limit_count = 3 if tier == "FREE" else 20
+    display_results = results[:limit_count]
+
     lines = ["📈 <b>VOLUME SPIKE — RADAR MOMENTUM</b>", "RVOL dibandingkan rata-rata volume 20 hari. Ini radar riset, bukan rekomendasi beli.\n"]
-    for index, result in enumerate(results[:20], start=1):
+    for index, result in enumerate(display_results, start=1):
         ticker = result["ticker"][:-3] if result["ticker"].endswith(".JK") else result["ticker"]
         lines.append(
             f"{index}. <b>{ticker}</b> — <code>{result['label']}</code>\n"
             f"   RVOL {result['rvol']:.2f}x | Harga {result['price_change_pct']:+.2f}% | "
             f"Nilai {result['turnover'] / 1_000_000_000:.1f}B | {result['trend']}"
+        )
+    if tier == "FREE" and len(results) > limit_count:
+        lines.append(
+            f"\n🔒 <i>Menampilkan Top 3 (Paket FREE). Total {len(results)} radar saham terdeteksi.</i>\n"
+            "Ketik <code>/donate</code> untuk membuka seluruh radar volume spike."
         )
     await send_message_chunks(message, "\n\n".join(lines), parse_mode="HTML")
 
@@ -300,7 +336,7 @@ async def handle_follow(message: types.Message):
     args = message.text.split()
     user_id, username = _telegram_identity(message)
     if len(args) >= 2 and args[1].lower() == "list":
-        tier, limit, followed = await tools.list_followed_candidates(user_id)
+        tier, limit, followed, _ = await tools.list_followed_candidates(user_id)
         limit_text = "tanpa batas" if limit is None else str(limit)
         if not followed:
             await message.answer(f"📌 Monitoring Anda kosong. Paket <code>{tier}</code>: maksimal {limit_text} kandidat.", parse_mode="HTML")
@@ -319,7 +355,7 @@ async def handle_follow(message: types.Message):
         limit_text = "tanpa batas" if result.limit is None else str(result.limit)
         await message.answer(f"✅ Kandidat <b>{args[1].upper()}</b> ditambahkan ke monitoring Anda ({result.followed_count}/{limit_text}).", parse_mode="HTML")
     elif result.status == "LIMIT_REACHED":
-        await message.answer("🔒 Batas akun gratis (2 kandidat) tercapai. Hapus kandidat dengan <code>/unfollow TICKER</code>.", parse_mode="HTML")
+        await message.answer("🔒 Batas akun gratis (2 kandidat) tercapai. Upgrade ke <b>PREMIUM</b> (<code>/donate</code>) untuk memantau tanpa batas.", parse_mode="HTML")
     elif result.status == "NOT_A_CANDIDATE":
         await message.answer("ℹ️ Ticker tersebut tidak ada di kandidat scan terbaru. Lihat <code>/candidates</code>.", parse_mode="HTML")
     elif result.status == "NO_SCAN":
@@ -343,12 +379,46 @@ async def handle_unfollow(message: types.Message):
 @router.message(Command("account"))
 async def handle_account(message: types.Message):
     user_id, _ = _telegram_identity(message)
-    tier, limit, followed = await tools.list_followed_candidates(user_id)
+    tier, limit, followed, expires_at = await tools.list_followed_candidates(user_id)
     limit_text = "Tanpa batas" if limit is None else str(limit)
+
+    expiry_info = ""
+    if tier == "PREMIUM":
+        if expires_at:
+            expiry_info = f"\n⏳ Masa Aktif: Sampai <b>{expires_at.strftime('%d %b %Y %H:%M UTC')}</b>"
+        else:
+            expiry_info = "\n⏳ Masa Aktif: <b>Permanen</b>"
+    else:
+        expiry_info = "\n💡 Upgrade ke <b>PREMIUM</b> via donasi: <code>/donate</code>"
+
     await message.answer(
-        f"👤 <b>AKUN ANDA</b>\n\nPaket: <code>{tier}</code>\nMonitoring: {len(followed)}/{limit_text}\nID: <code>{user_id}</code>",
+        f"👤 <b>INFORMASI AKUN</b>\n\n"
+        f"• <b>User ID:</b> <code>{user_id}</code>\n"
+        f"• <b>Paket:</b> <code>{tier}</code>\n"
+        f"• <b>Monitoring Kuota:</b> {len(followed)}/{limit_text}"
+        f"{expiry_info}",
         parse_mode="HTML",
     )
+
+
+@router.message(Command("donate"))
+@router.message(Command("upgrade"))
+async def handle_donate(message: types.Message):
+    user_id, username = _telegram_identity(message)
+    donate_text = (
+        "⭐ <b>UPGRADE KE IDX AI AGENT PREMIUM</b>\n\n"
+        "Dukung pengembangan bot ini dengan berdonasi minimal <b>Rp 10.000</b> dan dapatkan akses <b>PREMIUM (30 Hari)</b>:\n\n"
+        "<b>Keuntungan PREMIUM:</b>\n"
+        "• 📌 Pantau saham tanpa batas di <code>/follow</code> (Free: maks 2)\n"
+        "• 🔎 Akses penuh seluruh kandidat <code>/scan</code> & <code>/candidates</code>\n"
+        "• 📈 Radar lengkap Top 20 saham <code>/volume_spike</code>\n"
+        "• 📬 Notifikasi & laporan harian portofolio pantauan\n\n"
+        "<b>Cara Berdonasi / Konfirmasi:</b>\n"
+        f"1. Sertakan <b>User ID</b> Anda: <code>{user_id}</code> pada catatan donasi.\n"
+        "2. Donasi dapat melalui QRIS / Saweria / Transfer Bank (Hubungi Admin).\n"
+        "3. Konfirmasi ke Admin setelah berdonasi untuk aktivasi instan."
+    )
+    await message.answer(donate_text, parse_mode="HTML")
 
 
 @router.message(Command("alerts"))
@@ -369,12 +439,19 @@ async def _set_tier(message: types.Message, tier: str) -> None:
         await message.answer("⛔ Command ini hanya untuk admin.", parse_mode="HTML")
         return
     args = message.text.split()
-    if len(args) != 2 or not args[1].isdigit():
-        await message.answer(f"⚠️ Gunakan <code>/{'grant_premium' if tier == 'PREMIUM' else 'revoke_premium'} TELEGRAM_USER_ID</code>", parse_mode="HTML")
+    if len(args) < 2 or not args[1].isdigit():
+        await message.answer(f"⚠️ Gunakan: <code>/{'grant_premium' if tier == 'PREMIUM' else 'revoke_premium'} USER_ID [DURASI_HARI]</code>", parse_mode="HTML")
         return
     target_id = int(args[1])
-    await tools.set_subscription_tier(target_id, tier)
-    await message.answer(f"✅ User <code>{target_id}</code> sekarang berstatus <code>{tier}</code>.", parse_mode="HTML")
+    days = 30
+    if len(args) >= 3 and args[2].isdigit():
+        days = int(args[2])
+
+    expires_at = await tools.set_subscription_tier(target_id, tier, duration_days=days)
+    if tier == "PREMIUM" and expires_at:
+        await message.answer(f"✅ User <code>{target_id}</code> sekarang <code>PREMIUM</code> aktif selama {days} hari (sampai {expires_at.strftime('%d %b %Y %H:%M UTC')}).", parse_mode="HTML")
+    else:
+        await message.answer(f"✅ User <code>{target_id}</code> sekarang berstatus <code>{tier}</code>.", parse_mode="HTML")
 
 
 @router.message(Command("grant_premium"))

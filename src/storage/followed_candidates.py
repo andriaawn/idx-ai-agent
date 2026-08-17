@@ -10,6 +10,8 @@ from sqlalchemy import func, select
 from src.storage.database import AsyncSessionLocal
 from src.storage.models import FollowedCandidate, ScanCandidate, ScanRun, UserProfile
 
+from datetime import datetime, timedelta
+
 FREE_FOLLOW_LIMIT = 2
 
 
@@ -19,6 +21,26 @@ class FollowResult:
     tier: str
     limit: Optional[int]
     followed_count: int
+
+
+def _resolve_effective_tier(user: Optional[UserProfile]) -> tuple[str, Optional[datetime]]:
+    """Determine user's active tier based on expiration timestamp."""
+    if user is None:
+        return "FREE", None
+    tier = user.subscription_tier.upper()
+    if tier != "PREMIUM":
+        return "FREE", None
+    if user.subscription_expires_at is not None:
+        if datetime.utcnow() > user.subscription_expires_at:
+            return "FREE", user.subscription_expires_at
+    return "PREMIUM", user.subscription_expires_at
+
+
+async def get_user_tier(telegram_user_id: int) -> tuple[str, Optional[datetime]]:
+    """Get active tier and expiry datetime for a user."""
+    async with AsyncSessionLocal() as session:
+        user = await session.get(UserProfile, telegram_user_id)
+        return _resolve_effective_tier(user)
 
 
 async def follow_latest_candidate(telegram_user_id: int, username: Optional[str], ticker: str) -> FollowResult:
@@ -33,7 +55,7 @@ async def follow_latest_candidate(telegram_user_id: int, username: Optional[str]
         elif username and user.username != username:
             user.username = username
 
-        tier = user.subscription_tier.upper()
+        tier, _ = _resolve_effective_tier(user)
         limit = None if tier == "PREMIUM" else FREE_FOLLOW_LIMIT
         count = int((await session.execute(
             select(func.count(FollowedCandidate.id)).where(FollowedCandidate.telegram_user_id == telegram_user_id)
@@ -80,17 +102,17 @@ async def follow_latest_candidate(telegram_user_id: int, username: Optional[str]
         return FollowResult("FOLLOWED", tier, limit, count + 1)
 
 
-async def list_followed_candidates(telegram_user_id: int) -> tuple[str, Optional[int], List[FollowedCandidate]]:
+async def list_followed_candidates(telegram_user_id: int) -> tuple[str, Optional[int], List[FollowedCandidate], Optional[datetime]]:
     async with AsyncSessionLocal() as session:
         user = await session.get(UserProfile, telegram_user_id)
-        tier = user.subscription_tier.upper() if user else "FREE"
+        tier, expires_at = _resolve_effective_tier(user)
         limit = None if tier == "PREMIUM" else FREE_FOLLOW_LIMIT
         followed = list((await session.execute(
             select(FollowedCandidate)
             .where(FollowedCandidate.telegram_user_id == telegram_user_id)
             .order_by(FollowedCandidate.followed_at.desc(), FollowedCandidate.id.desc())
         )).scalars())
-        return tier, limit, followed
+        return tier, limit, followed, expires_at
 
 
 async def unfollow_candidate(telegram_user_id: int, ticker: str) -> bool:
@@ -109,13 +131,26 @@ async def unfollow_candidate(telegram_user_id: int, ticker: str) -> bool:
         return True
 
 
-async def set_subscription_tier(telegram_user_id: int, tier: str) -> None:
-    """Set a tier manually; payment automation can call this later."""
+async def set_subscription_tier(
+    telegram_user_id: int, tier: str, duration_days: Optional[int] = 30
+) -> Optional[datetime]:
+    """Set tier with optional duration in days (default 30 days for PREMIUM)."""
+    normalized_tier = tier.upper()
+    expires_at = None
+    if normalized_tier == "PREMIUM" and duration_days and duration_days > 0:
+        expires_at = datetime.utcnow() + timedelta(days=duration_days)
+
     async with AsyncSessionLocal() as session:
         user = await session.get(UserProfile, telegram_user_id)
         if user is None:
-            user = UserProfile(telegram_user_id=telegram_user_id, subscription_tier=tier)
+            user = UserProfile(
+                telegram_user_id=telegram_user_id,
+                subscription_tier=normalized_tier,
+                subscription_expires_at=expires_at,
+            )
             session.add(user)
         else:
-            user.subscription_tier = tier
+            user.subscription_tier = normalized_tier
+            user.subscription_expires_at = expires_at
         await session.commit()
+        return expires_at

@@ -269,21 +269,29 @@ class QuantAgentTools:
         spikes = [result for result in results if result is not None]
         return sorted(spikes, key=lambda result: (result["rvol"], result["turnover"]), reverse=True)
 
-    async def follow_latest_candidate(self, telegram_user_id: int, username: Optional[str], ticker: str):
-        from src.storage.followed_candidates import follow_latest_candidate
-        return await follow_latest_candidate(telegram_user_id, username, ticker)
-
     async def list_followed_candidates(self, telegram_user_id: int):
         from src.storage.followed_candidates import list_followed_candidates
         return await list_followed_candidates(telegram_user_id)
+
+    async def get_user_tier(self, telegram_user_id: int):
+        from src.storage.followed_candidates import get_user_tier
+        return await get_user_tier(telegram_user_id)
+
+    async def follow_latest_candidate(
+        self, telegram_user_id: int, username: Optional[str], ticker: str
+    ):
+        from src.storage.followed_candidates import follow_latest_candidate
+        return await follow_latest_candidate(telegram_user_id, username, ticker)
 
     async def unfollow_candidate(self, telegram_user_id: int, ticker: str) -> bool:
         from src.storage.followed_candidates import unfollow_candidate
         return await unfollow_candidate(telegram_user_id, ticker)
 
-    async def set_subscription_tier(self, telegram_user_id: int, tier: str) -> None:
+    async def set_subscription_tier(
+        self, telegram_user_id: int, tier: str, duration_days: Optional[int] = 30
+    ):
         from src.storage.followed_candidates import set_subscription_tier
-        await set_subscription_tier(telegram_user_id, tier)
+        return await set_subscription_tier(telegram_user_id, tier, duration_days=duration_days)
 
     async def update_alert_preference(self, telegram_user_id: int, alert_name: str, enabled: bool) -> bool:
         from src.storage.alert_preferences import update_preference

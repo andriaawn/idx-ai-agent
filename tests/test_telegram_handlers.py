@@ -6,9 +6,10 @@ from src.telegram import handlers
 
 
 class FakeMessage:
-    def __init__(self, text="/analyze BBCA"):
+    def __init__(self, text="/analyze BBCA", user_id=12345, username="testuser"):
         self.text = text
         self.events = []
+        self.from_user = SimpleNamespace(id=user_id, username=username)
 
     async def answer(self, text, parse_mode=None):
         self.events.append(("text", text, parse_mode))
@@ -57,7 +58,8 @@ class TestCandidatesCommand(unittest.IsolatedAsyncioTestCase):
             ticker="BBCA", signal_type="BUY", score=85.0, setup_name="BREAKOUT",
             entry_price=9250.0, stop_loss=9000.0, target_1=9750.0,
         )
-        with patch.object(handlers.tools, "get_latest_scan_candidates", new=AsyncMock(return_value=(run, [candidate]))) as latest:
+        with patch.object(handlers.tools, "get_user_tier", new=AsyncMock(return_value=("PREMIUM", None))), \
+             patch.object(handlers.tools, "get_latest_scan_candidates", new=AsyncMock(return_value=(run, [candidate]))) as latest:
             await handlers.handle_candidates(message)
 
         latest.assert_awaited_once_with(offset=10, limit=10)
