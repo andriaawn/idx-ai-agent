@@ -413,10 +413,10 @@ async def handle_donate(message: types.Message):
         "• 🔎 Akses penuh seluruh kandidat <code>/scan</code> & <code>/candidates</code>\n"
         "• 📈 Radar lengkap Top 20 saham <code>/volume_spike</code>\n"
         "• 📬 Notifikasi & laporan harian portofolio pantauan\n\n"
-        "<b>Cara Berdonasi / Konfirmasi:</b>\n"
-        f"1. Sertakan <b>User ID</b> Anda: <code>{user_id}</code> pada catatan donasi.\n"
-        "2. Donasi dapat melalui QRIS / Saweria / Transfer Bank (Hubungi Admin).\n"
-        "3. Konfirmasi ke Admin setelah berdonasi untuk aktivasi instan."
+        "<b>Cara Berdonasi & Aktivasi:</b>\n"
+        f"1. Salin <b>User ID</b> Telegram Anda: <code>{user_id}</code>\n"
+        "2. Hubungi Admin: @bapakeew untuk info pembayaran (QRIS / Transfer / E-Wallet)\n"
+        f"3. Kirim bukti donasi beserta User ID <code>{user_id}</code> ke @bapakeew untuk aktivasi instan."
     )
     await message.answer(donate_text, parse_mode="HTML")
 
