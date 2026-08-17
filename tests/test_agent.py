@@ -136,5 +136,26 @@ class TestAgentSystem(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(analysis["htf_snapshot"])
         self.assertEqual(analysis["mtf_analysis"]["status"], "INSUFFICIENT_DATA")
 
+    async def test_volume_spike_requires_relative_volume_and_positive_price_confirmation(self):
+        qualifying = sample_ohlcv(25)
+        qualifying.loc[qualifying.index[-2], "close"] = 1_000.0
+        qualifying.loc[qualifying.index[-1], "close"] = 1_030.0
+        qualifying.loc[qualifying.index[-1], "volume"] = 100_000
+        rejected = sample_ohlcv(25)
+
+        class Provider:
+            async def get_historical_ohlcv(self, symbol, timeframe="1d"):
+                return qualifying if symbol == "GOOD.JK" else rejected
+
+        tools = QuantAgentTools()
+        tools.provider = Provider()
+        results = await tools.scan_volume_spikes(
+            tickers=["GOOD", "QUIET"], minimum_turnover=0.0, minimum_rvol=1.8
+        )
+
+        self.assertEqual([result["ticker"] for result in results], ["GOOD.JK"])
+        self.assertGreater(results[0]["rvol"], 1.8)
+        self.assertGreater(results[0]["price_change_pct"], 1.0)
+
 if __name__ == "__main__":
     unittest.main()

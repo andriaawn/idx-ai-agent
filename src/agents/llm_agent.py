@@ -15,7 +15,7 @@ Panduan Respons:
 4. Berikan wawasan mengenai potensi risiko dan ingatkan bahwa analisis kuantitatif bersifat probabilitas.
 """
 
-MODELS = ["gemini-2.0-flash", "gemini-2.0-flash-lite"]
+MODELS = ["gemini-3.5-flash","gemini-3.1-flash-lite"]
 MAX_RETRIES = 3
 
 

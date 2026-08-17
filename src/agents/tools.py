@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Dict, Any, List, Optional
 from src.data.providers.yfinance_provider import YFinanceProvider
 from src.data.normalizers import MarketDataNormalizer
@@ -32,18 +33,24 @@ class QuantAgentTools:
         normalized_df = MarketDataNormalizer.normalize(ihsg_df)
         return MarketRegimeAnalyzer.analyze_regime(normalized_df)
 
-    async def analyze_stock(self, ticker: str) -> Dict[str, Any]:
+    async def analyze_stock(
+        self, ticker: str, *, canonical_ticker: Optional[str] = None,
+        market_regime: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Runs complete deterministic quant analysis pipeline for a ticker."""
-        canonical_ticker = await TickerResolver.resolve_ticker(ticker)
+        canonical_ticker = canonical_ticker or await TickerResolver.resolve_ticker(ticker)
         if not canonical_ticker:
             return {"status": "ERROR", "reason": "Ticker is not a valid IDX listing"}
 
-        df, htf_df, market_regime = await asyncio.gather(
+        fetches = [
             self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d"),
             self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1wk"),
-            self.get_market_status(),
-            return_exceptions=True,
-        )
+        ]
+        if market_regime is None:
+            fetches.append(self.get_market_status())
+        fetched = await asyncio.gather(*fetches, return_exceptions=True)
+        df, htf_df = fetched[0], fetched[1]
+        market_regime = fetched[2] if len(fetched) == 3 else market_regime
         if isinstance(df, Exception):
             return {"status": "ERROR", "reason": "Failed to fetch daily price data"}
         if isinstance(htf_df, Exception):
@@ -155,11 +162,15 @@ class QuantAgentTools:
             tickers = tickers[:limit]
 
         semaphore = asyncio.Semaphore(max_concurrent)
+        shared_market_regime = await self.get_market_status()
 
         async def analyze_with_sem(t: str):
             async with semaphore:
                 try:
-                    return await self.analyze_stock(t)
+                    canonical_ticker = t if t.endswith(".JK") else f"{t}.JK"
+                    return await self.analyze_stock(
+                        t, canonical_ticker=canonical_ticker, market_regime=shared_market_regime
+                    )
                 except Exception:
                     return {"status": "ERROR", "ticker": t}
 
@@ -175,42 +186,105 @@ class QuantAgentTools:
 
         valid_results.sort(key=lambda x: x["score_breakdown"].total_score, reverse=True)
 
-        if save_to_db and valid_results:
+        if save_to_db:
             try:
-                await self.save_scan_results_to_db(valid_results)
+                await self.save_scan_results_to_db(valid_results, total_scanned=len(tickers))
             except Exception:
-                pass
+                logging.exception("Failed to persist market scan snapshot")
 
         return valid_results
 
-    async def save_scan_results_to_db(self, scan_results: List[Dict[str, Any]]) -> int:
-        """Persists valid scan signal results into the database."""
-        from src.storage.database import AsyncSessionLocal
-        from src.storage.models import Signal
-        from datetime import datetime
+    async def save_scan_results_to_db(self, scan_results: List[Dict[str, Any]], total_scanned: int) -> int:
+        """Persist the ranked scan as a shared immutable research snapshot."""
+        from src.storage.scan_results import save_scan_snapshot
+        return await save_scan_snapshot(scan_results, total_scanned)
 
-        saved_count = 0
-        async with AsyncSessionLocal() as session:
-            for res in scan_results:
-                ticker = res["ticker"]
-                db_ticker = ticker[:-3] if ticker.endswith(".JK") else ticker
-                score = res["score_breakdown"]
-                setup = res["setup"]
-                risk = res.get("risk_plan")
+    async def get_latest_scan_candidates(
+        self, offset: int = 0, limit: int = 10, signal_type: Optional[str] = None
+    ):
+        from src.storage.scan_results import get_latest_scan_candidates
+        return await get_latest_scan_candidates(offset=offset, limit=limit, signal_type=signal_type)
 
-                sig = Signal(
-                    ticker=db_ticker,
-                    timestamp=datetime.utcnow(),
-                    signal_type=score.signal_type,
-                    setup_name=setup.setup_type.value if setup else "NO_SETUP",
-                    score=score.total_score,
-                    entry_price=risk.entry_price if risk else 0.0,
-                    stop_loss=risk.stop_loss if risk else 0.0,
-                    target_1=risk.target_1 if risk else 0.0,
-                    risk_reward=risk.risk_reward_ratio if risk else 0.0,
-                    status="ACTIVE"
-                )
-                session.add(sig)
-                saved_count += 1
-            await session.commit()
-        return saved_count
+    async def scan_volume_spikes(
+        self,
+        tickers: Optional[List[str]] = None,
+        max_concurrent: int = 15,
+        limit: Optional[int] = None,
+        minimum_rvol: float = 1.8,
+        minimum_turnover: float = 1_000_000_000.0,
+        minimum_price_change_pct: float = 1.0,
+    ) -> List[Dict[str, Any]]:
+        """Find liquid daily volume expansions with positive price confirmation.
+
+        This is deliberately independent of the full signal score: unusual
+        volume alone is research context, not a buy recommendation.
+        """
+        if not tickers:
+            fetched = await IDXUniverseRefresher.fetch_idx_stocks()
+            tickers = [stock["ticker"] for stock in fetched]
+        if limit and limit > 0:
+            tickers = tickers[:limit]
+
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def analyze_ticker(ticker: str) -> Optional[Dict[str, Any]]:
+            canonical_ticker = ticker if ticker.endswith(".JK") else f"{ticker}.JK"
+            async with semaphore:
+                try:
+                    raw = await self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d")
+                except Exception:
+                    return None
+            if raw.empty or len(raw) < TechnicalIndicators.MINIMUM_HISTORY:
+                return None
+            validation = MarketDataValidator.validate_ohlcv(raw)
+            if not validation.is_valid:
+                return None
+            clean = MarketDataNormalizer.normalize(raw)
+            snapshot = TechnicalIndicators.get_snapshot(clean)
+            if snapshot is None or len(clean) < 2:
+                return None
+
+            previous_close = float(clean["close"].iloc[-2])
+            change_pct = ((snapshot.close - previous_close) / previous_close) * 100.0 if previous_close else 0.0
+            turnover = snapshot.close * snapshot.volume
+            if (
+                snapshot.rvol < minimum_rvol
+                or turnover < minimum_turnover
+                or change_pct < minimum_price_change_pct
+            ):
+                return None
+            label = "BREAKOUT" if snapshot.trend_alignment == "BULLISH" and snapshot.roc_10 > 3.0 else "VOLUME MOMENTUM"
+            return {
+                "ticker": canonical_ticker,
+                "rvol": snapshot.rvol,
+                "turnover": turnover,
+                "price_change_pct": round(change_pct, 2),
+                "close": snapshot.close,
+                "volume": snapshot.volume,
+                "trend": snapshot.trend_alignment,
+                "label": label,
+            }
+
+        results = await asyncio.gather(*(analyze_ticker(ticker) for ticker in tickers))
+        spikes = [result for result in results if result is not None]
+        return sorted(spikes, key=lambda result: (result["rvol"], result["turnover"]), reverse=True)
+
+    async def follow_latest_candidate(self, telegram_user_id: int, username: Optional[str], ticker: str):
+        from src.storage.followed_candidates import follow_latest_candidate
+        return await follow_latest_candidate(telegram_user_id, username, ticker)
+
+    async def list_followed_candidates(self, telegram_user_id: int):
+        from src.storage.followed_candidates import list_followed_candidates
+        return await list_followed_candidates(telegram_user_id)
+
+    async def unfollow_candidate(self, telegram_user_id: int, ticker: str) -> bool:
+        from src.storage.followed_candidates import unfollow_candidate
+        return await unfollow_candidate(telegram_user_id, ticker)
+
+    async def set_subscription_tier(self, telegram_user_id: int, tier: str) -> None:
+        from src.storage.followed_candidates import set_subscription_tier
+        await set_subscription_tier(telegram_user_id, tier)
+
+    async def update_alert_preference(self, telegram_user_id: int, alert_name: str, enabled: bool) -> bool:
+        from src.storage.alert_preferences import update_preference
+        return await update_preference(telegram_user_id, alert_name, enabled)

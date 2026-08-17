@@ -3,6 +3,9 @@
 *.env
 
 # Python
+.venv/
+**pycache**/
+*.pyc
 __pycache__/
 *.py[cod]
 *$py.class
