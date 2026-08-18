@@ -42,36 +42,28 @@ class QuantAgentTools:
         if not canonical_ticker:
             return {"status": "ERROR", "reason": "Ticker is not a valid IDX listing"}
 
-        # 1. Fetch daily data first
-        try:
-            df = await self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d")
-        except Exception:
+        fetches = [
+            self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1d"),
+            self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1wk"),
+        ]
+        if market_regime is None:
+            fetches.append(self.get_market_status())
+        fetched = await asyncio.gather(*fetches, return_exceptions=True)
+        df, htf_df = fetched[0], fetched[1]
+        market_regime = fetched[2] if len(fetched) == 3 else market_regime
+        if isinstance(df, Exception):
             return {"status": "ERROR", "reason": "Failed to fetch daily price data"}
-
+        if isinstance(htf_df, Exception):
+            htf_df = df.iloc[0:0]
+        if isinstance(market_regime, Exception):
+            market_regime = {"status": "UNAVAILABLE", "message": "Failed to fetch IHSG data"}
         if df.empty:
             return {"status": "ERROR", "reason": "No price data found for ticker"}
 
         val = MarketDataValidator.validate_ohlcv(df)
+
         if not val.is_valid:
             return {"status": "DATA_UNRELIABLE", "issues": val.issues, "score": val.score}
-
-        # 2. Only fetch weekly HTF data & market regime if daily data is valid
-        extra_fetches = [
-            self.provider.get_historical_ohlcv(canonical_ticker, timeframe="1wk"),
-        ]
-        if market_regime is None:
-            extra_fetches.append(self.get_market_status())
-
-        extra_results = await asyncio.gather(*extra_fetches, return_exceptions=True)
-        htf_df = extra_results[0]
-        if len(extra_results) > 1:
-            market_regime = extra_results[1]
-            if isinstance(market_regime, Exception):
-                market_regime = {"status": "UNAVAILABLE", "message": "Failed to fetch IHSG data"}
-
-        if isinstance(htf_df, Exception) or htf_df.empty:
-            htf_df = df.iloc[0:0]
-
         clean_df = MarketDataNormalizer.normalize(df)
 
         snapshot = TechnicalIndicators.get_snapshot(clean_df)
@@ -157,7 +149,7 @@ class QuantAgentTools:
     async def scan_universe(
         self, 
         tickers: Optional[List[str]] = None, 
-        max_concurrent: int = 25,
+        max_concurrent: int = 15,
         limit: Optional[int] = None,
         save_to_db: bool = True
     ) -> List[Dict[str, Any]]:
