@@ -26,7 +26,7 @@ async def start_bot():
         BotCommand(command="unfollow",     description="Berhenti memantau saham — /unfollow BBCA"),
         BotCommand(command="alerts",       description="Atur notifikasi entry/breakout/target — /alerts entry on"),
         BotCommand(command="account",      description="Lihat paket & batas monitoring Anda"),
-        BotCommand(command="donate",       description="Donasi / Upgrade ke PREMIUM (Mulai Rp 10.000)"),
+        BotCommand(command="donate",       description="Dukung bot (semua fitur gratis)"),
         BotCommand(command="help",         description="Panduan lengkap semua command"),
     ])
 

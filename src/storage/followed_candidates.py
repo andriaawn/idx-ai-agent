@@ -12,7 +12,8 @@ from src.storage.models import FollowedCandidate, ScanCandidate, ScanRun, UserPr
 
 from datetime import datetime, timedelta
 
-FREE_FOLLOW_LIMIT = 2
+# Batas teknis anti-abuse (semua fitur gratis — ini bukan batas jualan).
+FOLLOW_LIMIT = 10
 
 
 @dataclass(frozen=True)
@@ -56,7 +57,7 @@ async def follow_latest_candidate(telegram_user_id: int, username: Optional[str]
             user.username = username
 
         tier, _ = _resolve_effective_tier(user)
-        limit = None if tier == "PREMIUM" else FREE_FOLLOW_LIMIT
+        limit = FOLLOW_LIMIT
         count = int((await session.execute(
             select(func.count(FollowedCandidate.id)).where(FollowedCandidate.telegram_user_id == telegram_user_id)
         )).scalar_one())
@@ -106,7 +107,7 @@ async def list_followed_candidates(telegram_user_id: int) -> tuple[str, Optional
     async with AsyncSessionLocal() as session:
         user = await session.get(UserProfile, telegram_user_id)
         tier, expires_at = _resolve_effective_tier(user)
-        limit = None if tier == "PREMIUM" else FREE_FOLLOW_LIMIT
+        limit = FOLLOW_LIMIT
         followed = list((await session.execute(
             select(FollowedCandidate)
             .where(FollowedCandidate.telegram_user_id == telegram_user_id)

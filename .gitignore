@@ -4,6 +4,7 @@
 
 # Python
 .venv/
+venv/
 **pycache**/
 *.pyc
 __pycache__/
@@ -14,6 +15,7 @@ __pycache__/
 
 # Databases & Storage
 *.db
+*.db.bak-*
 *.sqlite
 *.sqlite3
 
