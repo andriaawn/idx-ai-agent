@@ -19,6 +19,9 @@ __pycache__/
 *.sqlite
 *.sqlite3
 
+# Runtime cache (dibuat otomatis oleh yfinance provider)
+.unavailable_tickers.json
+
 # IDE & OS
 .vscode/
 .idea/
